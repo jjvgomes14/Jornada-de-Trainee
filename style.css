@@ -1,0 +1,119 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  color: white;
+}
+
+body {
+  background-image: url("img/globo.jpg");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: 40% center;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+/* animação de entrada suave */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* container central */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  animation: fadeIn 1.5s ease-out;
+}
+
+/* título */
+h1 {
+  font-family: 'Chakra Petch', serif;
+  font-size: 50px;
+  background: linear-gradient(180deg, #ff00c8, #910074, #7f00ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 20px rgba(255, 0, 200, 0.5);
+  letter-spacing: 2px;
+}
+
+/* formulário */
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* wrapper do input de senha */
+.input-wrapper {
+  position: relative;
+  width: 220px;
+}
+
+/* inputs */
+input {
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  width: 220px;
+  color: black;
+  font-size: 14px;
+}
+
+/* ícone de mostrar senha */
+.toggle-senha {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 16px;
+  color: #555;
+  user-select: none;
+}
+.toggle-senha:hover { color: #b4068b; }
+
+/* botão */
+button {
+  padding: 12px 22px;
+  border: none;
+  border-radius: 6px;
+  background-color: rgb(184, 6, 139);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+button:hover { background-color: rgb(145, 4, 109); }
+
+/* --- RESPONSIVIDADE --- */
+@media (max-width: 768px) {
+  h1 { font-size: 36px; text-align: center; }
+  input, .input-wrapper { width: 80%; max-width: 300px; }
+  button { width: 80%; max-width: 200px; font-size: 16px; }
+}
+
+@media (max-width: 480px) {
+  h1 { font-size: 30px; }
+  .container { gap: 15px; }
+  body { background-position: 50% center; }
+}
+
+/* mensagem de erro */
+.mensagem-erro {
+  color: #ff4d6d;
+  font-size: 14px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  height: 18px; /* reserva espaço fixo */
+  text-align: center;
+  font-weight: bold;
+  transition: opacity 0.3s ease;
+}

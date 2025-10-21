@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Portal FIAP — Dashboard</title>
+  <link rel="stylesheet" href="portal.css" />
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">Portal FIAP</div>
+    <div class="badge"><span class="dot"></span><span id="saudacao">Carregando…</span></div>
+    <div class="sep"></div>
+    <nav class="nav">
+      <a href="#" data-target="dash" class="active">📊 Dashboard</a>
+      <a href="#" data-target="cadastro">📝 Cadastros</a>
+      <a href="#" data-target="listagens">📚 Listagens</a>
+      <a href="#" data-target="notificacoes">🔔 Notificações</a>
+      <a href="#" data-target="calendario">🗓️ Calendário</a>
+      <div class="sep"></div>
+      <a href="#" id="toggleTheme">🌓 Tema Claro/Escuro</a>
+      <a href="#" id="logout">🚪 Sair</a>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="header">
+      <div class="who" id="perfilLinha"></div>
+      <div class="right">
+        <span class="badge"><span class="dot"></span><span id="badgeNotif">0 notificações</span></span>
+        <button class="btn" id="btnMenu">☰</button>
+      </div>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="content active" id="dash">
+      <div class="grid">
+        <div class="card">
+          <h2>Visão Geral</h2>
+          <p class="muted">Indicadores resumidos do ambiente acadêmico.</p>
+          <div class="grid">
+            <div class="card">
+              <strong>Alunos ativos</strong>
+              <div id="kpiAlunos" class="kpi">—</div>
+              <div class="muted" id="kpiAlunosVar">—</div>
+            </div>
+            <div class="card">
+              <strong>Professores</strong>
+              <div id="kpiProfs" class="kpi">—</div>
+              <div class="muted" id="kpiProfsVar">—</div>
+            </div>
+            <div class="card">
+              <strong>Ocupação média</strong>
+              <div id="kpiOcup" class="kpi">—</div>
+              <div class="muted" id="kpiOcupVar">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Gráfico de Desempenho</h2>
+          <div class="inline">
+            <label>Turma:
+              <select id="serieSelect">
+                <option value="ADS 2A">ADS 2A</option>
+                <option value="EC 3B">Eng. Comp. 3B</option>
+                <option value="SI 1C">Sistemas 1C</option>
+              </select>
+            </label>
+            <label>Indicador:
+              <select id="indicadorSelect">
+                <option value="nota">Nota média</option>
+                <option value="presenca">Presença (%)</option>
+              </select>
+            </label>
+          </div>
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- CADASTROS -->
+    <section class="content" id="cadastro">
+      <div class="grid">
+        <div class="card">
+          <h2>Cadastrar Aluno</h2>
+          <form id="formAluno" novalidate>
+            <div class="inline">
+              <label style="flex:1">Nome
+                <input name="nome" required />
+                <div class="error" data-error-for="nome"></div>
+              </label>
+              <label style="flex:1">RA
+                <input name="ra" required pattern="\\d{6,10}" placeholder="somente números" />
+                <div class="error" data-error-for="ra"></div>
+              </label>
+            </div>
+            <div class="inline">
+              <label style="flex:1">Curso
+                <select name="curso" required>
+                  <option value="">Selecione</option>
+                  <option>ADS</option><option>Eng. Comp.</option><option>Sistemas</option>
+                </select>
+                <div class="error" data-error-for="curso"></div>
+              </label>
+              <label style="flex:1">Turma
+                <input name="turma" required placeholder="ex: 2A" />
+                <div class="error" data-error-for="turma"></div>
+              </label>
+            </div>
+            <button class="btn primary">Salvar Aluno</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Cadastrar Professor</h2>
+          <form id="formProfessor" novalidate>
+            <div class="inline">
+              <label style="flex:1">Nome
+                <input name="nome" required />
+                <div class="error" data-error-for="nome"></div>
+              </label>
+              <label style="flex:1">Matrícula
+                <input name="matricula" required pattern="\\d{5,10}" />
+                <div class="error" data-error-for="matricula"></div>
+              </label>
+            </div>
+            <div class="inline">
+              <label style="flex:1">Departamento
+                <select name="departamento" required>
+                  <option value="">Selecione</option>
+                  <option>Computação</option><option>Gestão</option><option>Matemática</option>
+                </select>
+                <div class="error" data-error-for="departamento"></div>
+              </label>
+              <label style="flex:1">E-mail
+                <input name="email" type="email" required />
+                <div class="error" data-error-for="email"></div>
+              </label>
+            </div>
+            <button class="btn primary">Salvar Professor</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- LISTAGENS -->
+    <section class="content" id="listagens">
+      <div class="grid">
+        <div class="card">
+          <h2>Alunos</h2>
+          <div class="inline">
+            <input id="qAluno" placeholder="Buscar por nome/RA…" style="flex:2">
+            <select id="fCurso" style="flex:1">
+              <option value="">Todos os cursos</option>
+              <option>ADS</option><option>Eng. Comp.</option><option>Sistemas</option>
+            </select>
+            <select id="fTurma" style="flex:1">
+              <option value="">Todas as turmas</option>
+              <option>1A</option><option>2A</option><option>3B</option>
+            </select>
+          </div>
+          <table>
+            <thead><tr><th>Nome</th><th>RA</th><th>Curso</th><th>Turma</th><th>Ações</th></tr></thead>
+            <tbody id="tbAlunos"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Professores</h2>
+          <div class="inline">
+            <input id="qProf" placeholder="Buscar por nome/Mat…" style="flex:2">
+            <select id="fDepto" style="flex:1">
+              <option value="">Todos os departamentos</option>
+              <option>Computação</option><option>Gestão</option><option>Matemática</option>
+            </select>
+          </div>
+          <table>
+            <thead><tr><th>Nome</th><th>Matrícula</th><th>Departamento</th><th>E-mail</th><th>Ações</th></tr></thead>
+            <tbody id="tbProfs"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTIFICAÇÕES -->
+    <section class="content" id="notificacoes">
+      <div class="grid">
+        <div class="card">
+          <h2>Criar Notificação</h2>
+          <form id="formNotif">
+            <div class="inline">
+              <input name="titulo" placeholder="Título" required style="flex:2" />
+              <select name="tipo" style="flex:1">
+                <option>Geral</option><option>Alunos</option><option>Professores</option>
+              </select>
+            </div>
+            <textarea name="mensagem" placeholder="Mensagem…" required></textarea>
+            <button class="btn primary">Publicar</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Notificações Publicadas</h2>
+          <div id="listaNotif"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALENDÁRIO -->
+    <section class="content" id="calendario">
+      <div class="card">
+        <h2>Calendário Escolar</h2>
+        <div class="calendar">
+          <div class="cal-head">
+            <div class="inline">
+              <button class="btn" id="prevMes">◀</button>
+              <button class="btn" id="proxMes">▶</button>
+            </div>
+            <strong id="mesTitulo"></strong>
+            <div class="cal-legend">
+              <span class="pill">Provas</span>
+              <span class="pill">Trabalhos</span>
+              <span class="pill">Eventos</span>
+            </div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="mobilebar">
+      <button class="btn" onclick="toggleSidebar()">☰ Menu</button>
+    </div>
+  </div>
+
+  <script src="portal.js"></script>
+</body>
+</html>

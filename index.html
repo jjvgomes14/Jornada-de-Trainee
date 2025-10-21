@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal FIAP - Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="container">
+    <h1>Portal FIAP</h1>
+    <form id="loginForm">
+      <input id="usuario" type="text" placeholder="Usuário" required>
+
+      <div class="input-wrapper">
+        <input id="senha" type="password" placeholder="Senha" required>
+        <span id="toggleSenha" class="toggle-senha" title="Mostrar/ocultar senha">👁️</span>
+      </div>
+
+      <!-- Mensagem de erro -->
+      <p id="mensagemErro" class="mensagem-erro"></p>
+
+      <button id="btnEntrar" type="submit">Entrar</button>
+    </form>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
