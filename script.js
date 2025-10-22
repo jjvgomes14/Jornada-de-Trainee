@@ -1,4 +1,4 @@
-// Mostrar / ocultar senha
+// Mostrar/Ocultar Senha
 const senhaInput = document.getElementById('senha');
 const toggleSenha = document.getElementById('toggleSenha');
 toggleSenha.addEventListener('click', () => {
@@ -14,7 +14,7 @@ const usuarios = [
   { usuario: 'admin', senha: '789', tipo: 'administrador' }
 ];
 
-// Lidar com o envio do formulário
+// Login
 const form = document.getElementById('loginForm');
 const mensagemErro = document.getElementById('mensagemErro');
 
@@ -27,7 +27,7 @@ form.addEventListener('submit', (e) => {
   const encontrado = usuarios.find(u => u.usuario === usuario && u.senha === senha);
 
   if (encontrado) {
-    mensagemErro.textContent = ""; // limpa mensagem
+    mensagemErro.textContent = "";
     localStorage.setItem('usuarioLogado', JSON.stringify({
       usuario: encontrado.usuario,
       tipo: encontrado.tipo
