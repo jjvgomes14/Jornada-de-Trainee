@@ -1,0 +1,16 @@
+/* Transição na troca de tema */
+body {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Card de login */
+.login-caixa {
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  border-radius: 12px;
+}
+
+/* Mostrar/Ocultar senha*/
+#btnOlho {
+  font-size: 1.1rem;
+}
