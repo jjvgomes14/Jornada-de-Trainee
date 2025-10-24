@@ -14,3 +14,17 @@ body {
 #btnOlho {
   font-size: 1.1rem;
 }
+
+.card {
+  border-radius: 12px;
+}
+
+.sec .table thead th {
+  white-space: nowrap;
+}
+
+.d-none { display: none !important; }
+
+.toast {
+  opacity: 1; /* para simplificar visualização sem animação */
+}

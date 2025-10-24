@@ -7,7 +7,6 @@
   var erroSenha = document.getElementById('erroSenha');
   var feedback = document.getElementById('feedback');
   var botaoOlho = document.getElementById('btnOlho');
-  var linkEsqueci = document.getElementById('linkEsqueci');
   var switchTema = document.getElementById('switchTema');
   var labelTema = document.getElementById('labelTema');
   var body = document.body;
