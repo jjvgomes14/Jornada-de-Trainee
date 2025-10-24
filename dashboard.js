@@ -366,69 +366,80 @@
   }
 
   function renderGraficoTurma() {
-    const msg = document.getElementById('grafMsg');
-    if (!document.getElementById('chartNotas')) return;
+  const msg = document.getElementById('grafMsg');
+  if (!document.getElementById('chartNotas')) return;
 
-    const turma = selTurmaGraf?.value || '__selecione__';
-    if (turma === '__selecione__') {
-      if (msg) msg.textContent = 'Selecione uma turma para ver a média.';
+  const turma = selTurmaGraf?.value || '__selecione__';
+  const ctx = document.getElementById('chartNotas');
+
+  let labels = [];
+  let data = [];
+
+  if (turma === '__selecione__') {
+    // Mostrar média de TODAS as turmas
+    const turmas = Array.from(new Set(alunos.map(a => a.turma).filter(Boolean))).sort();
+    if (!turmas.length) {
+      if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
       if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
       return;
     }
 
-    const notasTurma = alunos
-      .filter(a => (a.turma || '') === turma)
-      .flatMap(a => Array.isArray(a.notas) ? a.notas.filter(n => typeof n === 'number') : []);
+    labels = turmas;
+    data = turmas.map(t => {
+      const notas = alunos
+        .filter(a => a.turma === t)
+        .flatMap(a => Array.isArray(a.notas) ? a.notas.filter(n => typeof n === 'number') : []);
+      return media(notas) ?? 0;
+    });
 
-    const m = media(notasTurma);
-    if (m == null) {
-      if (msg) msg.textContent = 'Nenhuma nota encontrada nesta turma.';
+    if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
+  } else {
+    // Mostrar média dos ALUNOS da turma selecionada
+    const alunosTurma = alunos.filter(a => a.turma === turma);
+    if (!alunosTurma.length) {
+      if (msg) msg.textContent = 'Nenhum aluno encontrado nessa turma.';
       if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
       return;
     }
-    if (msg) msg.textContent = `Turma ${turma} — Média calculada sobre ${notasTurma.length} nota(s).`;
 
-    const ctx = document.getElementById('chartNotas');
-    const data = {
-      labels: ['Média da Turma'],
-      datasets: [{ label: `Turma ${turma}`, data: [Number(m.toFixed(2))] }]
-    };
-    const options = { responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 } } };
+    labels = alunosTurma.map(a => a.nome);
+    data = alunosTurma.map(a => media(a.notas?.filter(n => typeof n === 'number')) ?? 0);
 
-    if (chartNotas) {
-      chartNotas.data = data;
-      chartNotas.options = options;
-      chartNotas.update();
-    } else {
-      chartNotas = new Chart(ctx, { type: 'bar', data, options });
-    }
+    if (msg) msg.textContent = `Turma ${turma} — médias individuais dos alunos.`;
   }
+
+  const chartData = {
+    labels,
+    datasets: [{
+      label: turma === '__selecione__' ? 'Média das Turmas' : `Média — ${turma}`,
+      data: data.map(v => Number(v.toFixed(2))),
+      backgroundColor: '#0d6efd80'
+    }]
+  };
+
+  const options = { responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 } } };
+
+  if (chartNotas) {
+    chartNotas.data = chartData;
+    chartNotas.options = options;
+    chartNotas.update();
+  } else {
+    chartNotas = new Chart(ctx, { type: 'bar', data: chartData, options });
+  }
+}
+
 
   // ===================== CALENDÁRIO (Professor CRUD) =====================
   const calEl = document.getElementById('calendario');
   if (calEl && window.FullCalendar) {
-    const calHint = document.getElementById('calHint');
-    if (isProfessor) {
-      if (calHint) calHint.textContent = 'Clique em um dia para adicionar; arraste para mover; clique no evento para editar/excluir.';
-    } else {
-      if (calHint) calHint.textContent = 'Visualização somente leitura.';
-    }
 
     const calendar = new FullCalendar.Calendar(calEl, {
       initialView: 'dayGridMonth',
       height: 'auto',
-      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
-      selectable: !!isProfessor,
+      headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+      selectable: false,
       editable:   !!isProfessor,
       events: eventosStore,
-      dateClick: (info) => {
-        if (!isProfessor) return;
-        const title = prompt('Título do evento:');
-        if (!title) return;
-        const ev = { id: 'ev-' + Date.now(), title, start: info.dateStr, allDay: true };
-        calendar.addEvent(ev);
-        salvarEventos(calendar);
-      },
       eventClick: (info) => {
         if (!isProfessor) return;
         const ev = info.event;
@@ -456,6 +467,54 @@
       }
     });
     calendar.render();
+
+    // Botão "Adicionar evento" (apenas para professor)
+    // Botão "Adicionar evento" (apenas para professor)
+    const btnAddEvento = document.getElementById('btnAddEvento');
+    const modalEventoEl = document.getElementById('modalEvento');
+    const formEvento = document.getElementById('formEvento');
+    let modalEvento;
+
+    if (!isProfessor && btnAddEvento) {
+      btnAddEvento.classList.add('d-none');
+    }
+
+    if (isProfessor && btnAddEvento) {
+      // Mostrar modal ao clicar no botão
+      btnAddEvento.addEventListener('click', () => {
+        if (!modalEvento) modalEvento = new bootstrap.Modal(modalEventoEl);
+        formEvento.reset();
+        modalEvento.show();
+      });
+
+      // Submissão do formulário do modal
+      formEvento.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const title = document.getElementById('evtTitulo').value.trim();
+        const start = document.getElementById('evtInicio').value;
+        const end = document.getElementById('evtFim').value;
+
+        if (!title || !start) {
+          alert('Preencha pelo menos o título e a data inicial.');
+          return;
+        }
+
+        const ev = {
+          id: 'ev-' + Date.now(),
+          title,
+          start,
+        };
+
+        if (end) ev.end = end;
+
+        calendar.addEvent(ev);
+        salvarEventos(calendar);
+        modalEvento.hide();
+      });
+    }
+
+
 
     function salvarEventos(cal) {
       const arr = cal.getEvents().map(e => ({
@@ -490,44 +549,52 @@
   }
 
   function renderTabelaNotas() {
-    if (!tbodyNotas) return;
-    const turma = selTurmaNotas?.value || '__selecione__';
-    tbodyNotas.innerHTML = '';
+  if (!tbodyNotas) return;
+  const turma = selTurmaNotas?.value || '__selecione__';
+  tbodyNotas.innerHTML = '';
 
-    if (turma === '__selecione__') return;
+  // Mostrar todos os alunos se nenhuma turma estiver selecionada
+  const alunosFiltrados = (turma === '__selecione__')
+    ? alunos.map((a, i) => ({ ...a, i }))
+    : alunos.map((a, i) => ({ ...a, i })).filter(a => (a.turma || '') === turma);
 
-    alunos
-      .map((a, i) => ({ ...a, i }))
-      .filter(a => (a.turma || '') === turma)
-      .forEach(a => {
-        const notas = Array.isArray(a.notas) ? a.notas : [];
-        const media = mediaAluno(notas);
-        const tr = document.createElement('tr');
-
-        // chips das notas com botão de remover
-        const chips = notas.map((n, idxNota) =>
-          `<span class="badge text-bg-secondary me-1 mb-1">
-             ${Number(n).toFixed(1)}
-             <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-rem-nota" data-aidx="${a.i}" data-nidx="${idxNota}" title="Remover">×</button>
-           </span>`
-        ).join(' ');
-
-        tr.innerHTML = `
-          <td>${a.nome}</td>
-          <td>${a.ra}</td>
-          <td>${a.turma}</td>
-          <td>${chips || '<span class="text-body-secondary">— sem notas —</span>'}</td>
-          <td>
-            <div class="input-group input-group-sm" style="max-width: 180px;">
-              <input type="number" class="form-control form-control-sm inp-nova-nota" min="0" max="10" step="0.1" placeholder="Ex.: 7.5" data-aidx="${a.i}">
-              <button class="btn btn-primary btn-add-nota" data-aidx="${a.i}">Adicionar</button>
-            </div>
-          </td>
-          <td>${media == null ? '—' : media.toFixed(2)}</td>
-        `;
-        tbodyNotas.appendChild(tr);
-      });
+  if (!alunosFiltrados.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">Nenhum aluno encontrado.</td>`;
+    tbodyNotas.appendChild(tr);
+    return;
   }
+
+  alunosFiltrados.forEach(a => {
+    const notas = Array.isArray(a.notas) ? a.notas : [];
+    const media = mediaAluno(notas);
+    const tr = document.createElement('tr');
+
+    // chips das notas com botão de remover
+    const chips = notas.map((n, idxNota) =>
+      `<span class="badge text-bg-secondary me-1 mb-1">
+         ${Number(n).toFixed(1)}
+         <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-rem-nota" data-aidx="${a.i}" data-nidx="${idxNota}" title="Remover">×</button>
+       </span>`
+    ).join(' ');
+
+    tr.innerHTML = `
+      <td>${a.nome}</td>
+      <td>${a.ra}</td>
+      <td>${a.turma || '—'}</td>
+      <td>${chips || '<span class="text-body-secondary">— sem notas —</span>'}</td>
+      <td>
+        <div class="input-group input-group-sm" style="max-width: 180px;">
+          <input type="number" class="form-control form-control-sm inp-nova-nota" min="0" max="10" step="0.1" placeholder="Ex.: 7.5" data-aidx="${a.i}">
+          <button class="btn btn-primary btn-add-nota" data-aidx="${a.i}">Adicionar</button>
+        </div>
+      </td>
+      <td>${media == null ? '—' : media.toFixed(2)}</td>
+    `;
+    tbodyNotas.appendChild(tr);
+  });
+}
+
 
   // Delegação de eventos para adicionar/remover notas
   if (tbodyNotas) {
