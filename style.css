@@ -1,32 +1,22 @@
-/* Transição na troca de tema */
+/* Transições suaves para tema */
 body {
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.25s, color 0.25s;
 }
 
-/* Card de login */
+/* Card do login */
 .login-caixa {
   background: var(--bs-body-bg);
   color: var(--bs-body-color);
   border-radius: 12px;
 }
 
-/* Mostrar/Ocultar senha*/
-#btnOlho {
-  font-size: 1.1rem;
-}
+#btnOlho { font-size: 1.1rem; }
 
-.card {
-  border-radius: 12px;
-}
+.card { border-radius: 12px; }
 
-.sec .table thead th {
-  white-space: nowrap;
-}
+.sec .table thead th { white-space: nowrap; }
 
 .d-none { display: none !important; }
 
-.toast {
-  opacity: 1; /* para simplificar visualização sem animação */
-}
-
-
+/* Toasts sempre visíveis (sem animação para facilitar) */
+.toast { opacity: 1; }

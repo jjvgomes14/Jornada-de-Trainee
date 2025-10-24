@@ -1,93 +1,85 @@
 (function () {
-  // Pega elementos do HTML
+  // Pegar elementos
   var form = document.getElementById('formLogin');
-  var inputUsuario = document.getElementById('usuario');
-  var inputSenha = document.getElementById('senha');
+  var inpUsuario = document.getElementById('usuario');
+  var inpSenha = document.getElementById('senha');
   var erroUsuario = document.getElementById('erroUsuario');
   var erroSenha = document.getElementById('erroSenha');
   var feedback = document.getElementById('feedback');
-  var botaoOlho = document.getElementById('btnOlho');
+  var btnOlho = document.getElementById('btnOlho');
   var switchTema = document.getElementById('switchTema');
   var labelTema = document.getElementById('labelTema');
   var body = document.body;
 
-  // TEMA CLARO/ESCURO  
-  // Tenta ler o tema salvo anteriormente (se nunca salvou, começa como "light").
-  var temaSalvo = localStorage.getItem('tema') || 'light';
-  aplicarTema(temaSalvo);
+  // --- Tema claro/escuro ---
+  var tema = localStorage.getItem('tema') || 'light';
+  aplicarTema(tema);
 
-  // Alterar tema e salva
   switchTema.addEventListener('change', function () {
-    var novoTema = switchTema.checked ? 'dark' : 'light';
-    aplicarTema(novoTema);
-    localStorage.setItem('tema', novoTema);
+    var novo = switchTema.checked ? 'dark' : 'light';
+    aplicarTema(novo);
+    localStorage.setItem('tema', novo);
   });
 
-  function aplicarTema(nomeTema) {
-    body.setAttribute('data-bs-theme', nomeTema);
-
-    // Ajusta o estado do switch e o texto da label
-    if (nomeTema === 'dark') {
-      switchTema.checked = true;
-      labelTema.textContent = 'Modo escuro';
-    } else {
-      switchTema.checked = false;
-      labelTema.textContent = 'Modo claro';
-    }
+  function aplicarTema(nome) {
+    body.setAttribute('data-bs-theme', nome);
+    labelTema.textContent = (nome === 'dark') ? 'Modo escuro' : 'Modo claro';
+    switchTema.checked = (nome === 'dark');
   }
 
-  // MOSTRAR/OCULTAR SENHA
-  botaoOlho.addEventListener('click', function () {
-    if (inputSenha.type === 'password') {
-      inputSenha.type = 'text';
-      botaoOlho.textContent = '🙈';
-      botaoOlho.setAttribute('aria-label', 'Ocultar senha');
+  // --- Mostrar/ocultar senha ---
+  btnOlho.addEventListener('click', function () {
+    if (inpSenha.type === 'password') {
+      inpSenha.type = 'text';
+      btnOlho.textContent = '🙈';
+      btnOlho.setAttribute('aria-label', 'Ocultar senha');
     } else {
-      inputSenha.type = 'password';
-      botaoOlho.textContent = '👁️';
-      botaoOlho.setAttribute('aria-label', 'Mostrar senha');
+      inpSenha.type = 'password';
+      btnOlho.textContent = '👁️';
+      btnOlho.setAttribute('aria-label', 'Mostrar senha');
     }
   });
 
-  //FORMULÁRIO DE LOGIN
-  form.addEventListener('submit', function (evento) {
-  evento.preventDefault();
+  // --- Login simples ---
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    feedback.textContent = '';
+    erroUsuario.textContent = '';
+    erroSenha.textContent = '';
 
-  // Limpa mensagens antigas
-  feedback.textContent = '';
-  erroUsuario.textContent = '';
-  erroSenha.textContent = '';
+    var login = (inpUsuario.value || '').trim();
+    var senha = (inpSenha.value || '').trim();
 
-  var login = inputUsuario.value.trim();
-  var senha = inputSenha.value.trim();
+    if (!login) { erroUsuario.textContent = 'Informe seu usuário.'; return; }
+    if (!senha) { erroSenha.textContent = 'Informe sua senha.'; return; }
 
-  if (!login) { erroUsuario.textContent = 'Informe seu usuário.'; return; }
-  if (!senha) { erroSenha.textContent = 'Informe sua senha.'; return; }
+    // Usuários de teste
+    var usuarios = [
+      { tipo: 'aluno',         usuario: 'aluno',     senha: '123' },
+      { tipo: 'professor',     usuario: 'professor', senha: '456' },
+      { tipo: 'administrador', usuario: 'admin',     senha: '789' }
+    ];
 
-  // Usuários fictícios (exemplo simples)
-  var usuarios = [
-    { tipo: "aluno",        usuario: "aluno",     senha: "123" },
-    { tipo: "professor",    usuario: "professor", senha: "456" },
-    { tipo: "administrador",usuario: "admin",     senha: "789" }
-  ];
+    var i, achou = null;
+    for (i = 0; i < usuarios.length; i++) {
+      if (usuarios[i].usuario === login && usuarios[i].senha === senha) {
+        achou = usuarios[i];
+        break;
+      }
+    }
 
-  var achou = usuarios.find(u => u.usuario === login && u.senha === senha);
+    if (!achou) {
+      feedback.className = 'mt-3 text-danger small text-center';
+      feedback.textContent = 'Usuário ou senha incorretos!';
+      return;
+    }
 
-  if (!achou) {
-    feedback.textContent = 'Usuário ou senha incorretos!';
-    feedback.className = 'mt-3 text-danger small text-center';
-    return;
-  }
+    localStorage.setItem('tipoUsuario', achou.tipo);
+    localStorage.setItem('usuarioLogado', achou.usuario);
 
-  // Salva a "sessão" mínima no localStorage
-  localStorage.setItem('tipoUsuario', achou.tipo);
-  localStorage.setItem('usuarioLogado', achou.usuario);
+    feedback.className = 'mt-3 text-success small text-center';
+    feedback.textContent = 'Login bem-sucedido!';
 
-  feedback.className = 'mt-3 text-success small text-center';
-  feedback.textContent = `Login bem-sucedido! Bem-vindo, ${achou.tipo}.`;
-
-  setTimeout(function () {
-    window.location.href = 'dashboard.html';
-  }, 800);
-});
+    setTimeout(function () { window.location.href = 'dashboard.html'; }, 800);
+  });
 })();
