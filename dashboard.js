@@ -19,8 +19,8 @@
       // Professor: sem Cadastro e Notificações; vê Notas
       itensOcultar = ['sec-cadastro', 'sec-notificacoes'];
     } else {
-      // Aluno: esconde Notas (uso do professor)
-      itensOcultar = ['sec-notas'];
+      // Aluno: sem Cadastro e Notas
+      itensOcultar = ['sec-cadastro', 'sec-notas'];
     }
 
     itensOcultar.forEach(id => {
@@ -83,15 +83,80 @@
   });
 
   // ===================== DADOS (LocalStorage) =====================
-  const KEY_ALUNOS  = 'alunos';
-  const KEY_PROFS   = 'professores';
-  const KEY_EVENTOS = 'eventos';
+  const KEY_ALUNOS   = 'alunos';
+  const KEY_PROFS    = 'professores';
+  const KEY_EVENTOS  = 'eventos';
+  const KEY_NOTIFS   = 'notificacoes_eventos';             // <— NOVO: onde salvamos notificações
+  const KEY_VISTAS   = `notifs_vistas_${usuario || 'aluno'}`; // <— NOVO: controle do que já foi mostrado
 
   const alunos       = JSON.parse(localStorage.getItem(KEY_ALUNOS)  || '[]');
   const professores  = JSON.parse(localStorage.getItem(KEY_PROFS)   || '[]');
   const eventosStore = JSON.parse(localStorage.getItem(KEY_EVENTOS) || '[]'); // [{id,title,start,end,allDay}]
 
-  // --- Cadastro: Alunos ---
+  // ===================== HELPERS DE NOTIFICAÇÃO (NOVO) =====================
+  const listaNotificacoes = document.getElementById('listaNotificacoes');
+
+  function carregarNotifs() {
+    return JSON.parse(localStorage.getItem(KEY_NOTIFS) || '[]');
+  }
+  function salvarNotifs(arr) {
+    localStorage.setItem(KEY_NOTIFS, JSON.stringify(arr));
+  }
+  function getVistas() {
+    return new Set(JSON.parse(localStorage.getItem(KEY_VISTAS) || '[]'));
+  }
+  function setVistas(setIds) {
+    localStorage.setItem(KEY_VISTAS, JSON.stringify(Array.from(setIds)));
+  }
+
+  // Cria uma notificação para alunos sempre que UM PROFESSOR adicionar um novo evento
+  function criarNotificacaoEvento(ev) {
+    // ev: objeto do FullCalendar (já adicionado)
+    const notifs = carregarNotifs();
+    notifs.push({
+      id: 'ntf-' + Date.now(),
+      eventoId: ev.id,
+      titulo: ev.title,
+      inicio: ev.startStr || (ev.start ? ev.start.toISOString().slice(0,10) : ''),
+      criadoEm: new Date().toISOString()
+    });
+    salvarNotifs(notifs);
+  }
+
+  // Renderiza um "toast" simples dentro da área de notificações
+  function renderToast(msg) {
+    if (!listaNotificacoes) return;
+    const id = 'toast-' + Date.now();
+    const toast = document.createElement('div');
+    toast.className = 'toast align-items-center show border';
+    toast.role = 'alert';
+    toast.id = id;
+    toast.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${msg}</div>
+        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
+      </div>`;
+    listaNotificacoes.prepend(toast);
+  }
+
+  // Mostra, para aluno, todas as notificações ainda não vistas
+  function mostrarNotificacoesNovasParaAluno() {
+    if (isAdmin || isProfessor) return; // apenas alunos
+    const notifs = carregarNotifs();
+    const vistas = getVistas();
+
+    // Mostra da mais recente para a mais antiga (limite opcional: exibir últimas 5)
+    const novas = notifs.filter(n => !vistas.has(n.id)).slice(-10);
+    novas.forEach(n => {
+      const dataTxt = n.inicio ? ` em ${n.inicio}` : '';
+      renderToast(`Novo evento adicionado pelo professor: <b>${n.titulo}</b>${dataTxt}.`);
+      vistas.add(n.id);
+    });
+
+    if (novas.length) setVistas(vistas);
+  }
+
+  // ===================== Cadastro: Alunos =====================
   const formAluno = document.getElementById('formAluno');
   if (formAluno) {
     formAluno.addEventListener('submit', (e) => {
@@ -116,7 +181,7 @@
     });
   }
 
-  // --- Cadastro: Professores ---
+  // ===================== Cadastro: Professores =====================
   const formProf = document.getElementById('formProfessor');
   if (formProf) {
     formProf.addEventListener('submit', (e) => {
@@ -142,7 +207,7 @@
     el.className = 'small mt-1 ' + (erro ? 'text-danger' : 'text-success');
   }
 
-  // ===================== LISTAGEM + FILTROS (como definido) =====================
+  // ===================== LISTAGEM + FILTROS =====================
   const selTurma = document.getElementById('selTurma');
   const selDisc  = document.getElementById('selDisciplina');
   const filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
@@ -366,68 +431,67 @@
   }
 
   function renderGraficoTurma() {
-  const msg = document.getElementById('grafMsg');
-  if (!document.getElementById('chartNotas')) return;
+    const msg = document.getElementById('grafMsg');
+    if (!document.getElementById('chartNotas')) return;
 
-  const turma = selTurmaGraf?.value || '__selecione__';
-  const ctx = document.getElementById('chartNotas');
+    const turma = selTurmaGraf?.value || '__selecione__';
+    const ctx = document.getElementById('chartNotas');
 
-  let labels = [];
-  let data = [];
+    let labels = [];
+    let data = [];
 
-  if (turma === '__selecione__') {
-    // Mostrar média de TODAS as turmas
-    const turmas = Array.from(new Set(alunos.map(a => a.turma).filter(Boolean))).sort();
-    if (!turmas.length) {
-      if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
-      if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
-      return;
+    if (turma === '__selecione__') {
+      // Mostrar média de TODAS as turmas
+      const turmas = Array.from(new Set(alunos.map(a => a.turma).filter(Boolean))).sort();
+      if (!turmas.length) {
+        if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
+        if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
+        return;
+      }
+
+      labels = turmas;
+      data = turmas.map(t => {
+        const notas = alunos
+          .filter(a => a.turma === t)
+          .flatMap(a => Array.isArray(a.notas) ? a.notas.filter(n => typeof n === 'number') : []);
+        return media(notas) ?? 0;
+      });
+
+      if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
+    } else {
+      // Mostrar média dos ALUNOS da turma selecionada
+      const alunosTurma = alunos.filter(a => a.turma === turma);
+      if (!alunosTurma.length) {
+        if (msg) msg.textContent = 'Nenhum aluno encontrado nessa turma.';
+        if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
+        return;
+      }
+
+      labels = alunosTurma.map(a => a.nome);
+      data = alunosTurma.map(a => media(a.notas?.filter(n => typeof n === 'number')) ?? 0);
+
+      if (msg) msg.textContent = `Turma ${turma} — médias individuais dos alunos.`;
     }
 
-    labels = turmas;
-    data = turmas.map(t => {
-      const notas = alunos
-        .filter(a => a.turma === t)
-        .flatMap(a => Array.isArray(a.notas) ? a.notas.filter(n => typeof n === 'number') : []);
-      return media(notas) ?? 0;
-    });
+    const chartData = {
+      labels,
+      datasets: [{
+        label: turma === '__selecione__' ? 'Média das Turmas' : `Média — ${turma}`,
+        data: data.map(v => Number(v.toFixed(2))),
+        backgroundColor: '#0d6efd80'
+      }]
+    };
 
-    if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
-  } else {
-    // Mostrar média dos ALUNOS da turma selecionada
-    const alunosTurma = alunos.filter(a => a.turma === turma);
-    if (!alunosTurma.length) {
-      if (msg) msg.textContent = 'Nenhum aluno encontrado nessa turma.';
-      if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
-      return;
+    const options = { responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 } } };
+
+    if (chartNotas) {
+      chartNotas.data = chartData;
+      chartNotas.options = options;
+      chartNotas.update();
+    } else {
+      chartNotas = new Chart(ctx, { type: 'bar', data: chartData, options });
     }
-
-    labels = alunosTurma.map(a => a.nome);
-    data = alunosTurma.map(a => media(a.notas?.filter(n => typeof n === 'number')) ?? 0);
-
-    if (msg) msg.textContent = `Turma ${turma} — médias individuais dos alunos.`;
   }
-
-  const chartData = {
-    labels,
-    datasets: [{
-      label: turma === '__selecione__' ? 'Média das Turmas' : `Média — ${turma}`,
-      data: data.map(v => Number(v.toFixed(2))),
-      backgroundColor: '#0d6efd80'
-    }]
-  };
-
-  const options = { responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 } } };
-
-  if (chartNotas) {
-    chartNotas.data = chartData;
-    chartNotas.options = options;
-    chartNotas.update();
-  } else {
-    chartNotas = new Chart(ctx, { type: 'bar', data: chartData, options });
-  }
-}
-
 
   // ===================== CALENDÁRIO (Professor CRUD) =====================
   const calEl = document.getElementById('calendario');
@@ -464,11 +528,12 @@
         const ev = { id: 'ev-' + Date.now(), title, start: sel.startStr, end: sel.endStr, allDay: true };
         calendar.addEvent(ev);
         salvarEventos(calendar);
+        // NOVO: notificar alunos
+        criarNotificacaoEvento({ id: ev.id, title: ev.title, startStr: ev.start, start: { toISOString: () => ev.start } });
       }
     });
     calendar.render();
 
-    // Botão "Adicionar evento" (apenas para professor)
     // Botão "Adicionar evento" (apenas para professor)
     const btnAddEvento = document.getElementById('btnAddEvento');
     const modalEventoEl = document.getElementById('modalEvento');
@@ -511,10 +576,11 @@
         calendar.addEvent(ev);
         salvarEventos(calendar);
         modalEvento.hide();
+
+        // NOVO: notificar alunos
+        criarNotificacaoEvento({ id: ev.id, title: ev.title, startStr: ev.start, start: { toISOString: () => ev.start } });
       });
     }
-
-
 
     function salvarEventos(cal) {
       const arr = cal.getEvents().map(e => ({
@@ -549,52 +615,51 @@
   }
 
   function renderTabelaNotas() {
-  if (!tbodyNotas) return;
-  const turma = selTurmaNotas?.value || '__selecione__';
-  tbodyNotas.innerHTML = '';
+    if (!tbodyNotas) return;
+    const turma = selTurmaNotas?.value || '__selecione__';
+    tbodyNotas.innerHTML = '';
 
-  // Mostrar todos os alunos se nenhuma turma estiver selecionada
-  const alunosFiltrados = (turma === '__selecione__')
-    ? alunos.map((a, i) => ({ ...a, i }))
-    : alunos.map((a, i) => ({ ...a, i })).filter(a => (a.turma || '') === turma);
+    // Mostrar todos os alunos se nenhuma turma estiver selecionada
+    const alunosFiltrados = (turma === '__selecione__')
+      ? alunos.map((a, i) => ({ ...a, i }))
+      : alunos.map((a, i) => ({ ...a, i })).filter(a => (a.turma || '') === turma);
 
-  if (!alunosFiltrados.length) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">Nenhum aluno encontrado.</td>`;
-    tbodyNotas.appendChild(tr);
-    return;
+    if (!alunosFiltrados.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">Nenhum aluno encontrado.</td>`;
+      tbodyNotas.appendChild(tr);
+      return;
+    }
+
+    alunosFiltrados.forEach(a => {
+      const notas = Array.isArray(a.notas) ? a.notas : [];
+      const med = mediaAluno(notas);
+      const tr = document.createElement('tr');
+
+      // chips das notas com botão de remover
+      const chips = notas.map((n, idxNota) =>
+        `<span class="badge text-bg-secondary me-1 mb-1">
+           ${Number(n).toFixed(1)}
+           <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-rem-nota" data-aidx="${a.i}" data-nidx="${idxNota}" title="Remover">×</button>
+         </span>`
+      ).join(' ');
+
+      tr.innerHTML = `
+        <td>${a.nome}</td>
+        <td>${a.ra}</td>
+        <td>${a.turma || '—'}</td>
+        <td>${chips || '<span class="text-body-secondary">— sem notas —</span>'}</td>
+        <td>
+          <div class="input-group input-group-sm" style="max-width: 180px;">
+            <input type="number" class="form-control form-control-sm inp-nova-nota" min="0" max="10" step="0.1" placeholder="Ex.: 7.5" data-aidx="${a.i}">
+            <button class="btn btn-primary btn-add-nota" data-aidx="${a.i}">Adicionar</button>
+          </div>
+        </td>
+        <td>${med == null ? '—' : med.toFixed(2)}</td>
+      `;
+      tbodyNotas.appendChild(tr);
+    });
   }
-
-  alunosFiltrados.forEach(a => {
-    const notas = Array.isArray(a.notas) ? a.notas : [];
-    const media = mediaAluno(notas);
-    const tr = document.createElement('tr');
-
-    // chips das notas com botão de remover
-    const chips = notas.map((n, idxNota) =>
-      `<span class="badge text-bg-secondary me-1 mb-1">
-         ${Number(n).toFixed(1)}
-         <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-rem-nota" data-aidx="${a.i}" data-nidx="${idxNota}" title="Remover">×</button>
-       </span>`
-    ).join(' ');
-
-    tr.innerHTML = `
-      <td>${a.nome}</td>
-      <td>${a.ra}</td>
-      <td>${a.turma || '—'}</td>
-      <td>${chips || '<span class="text-body-secondary">— sem notas —</span>'}</td>
-      <td>
-        <div class="input-group input-group-sm" style="max-width: 180px;">
-          <input type="number" class="form-control form-control-sm inp-nova-nota" min="0" max="10" step="0.1" placeholder="Ex.: 7.5" data-aidx="${a.i}">
-          <button class="btn btn-primary btn-add-nota" data-aidx="${a.i}">Adicionar</button>
-        </div>
-      </td>
-      <td>${media == null ? '—' : media.toFixed(2)}</td>
-    `;
-    tbodyNotas.appendChild(tr);
-  });
-}
-
 
   // Delegação de eventos para adicionar/remover notas
   if (tbodyNotas) {
@@ -635,8 +700,7 @@
     });
   }
 
-  // ===================== Notificações (demo) =====================
-  const listaNotificacoes = document.getElementById('listaNotificacoes');
+  // ===================== Notificações (demo + NOVO fluxo aluno) =====================
   const btnNovaNotificacao = document.getElementById('btnNovaNotificacao');
   if (btnNovaNotificacao) {
     btnNovaNotificacao.addEventListener('click', () => {
@@ -650,7 +714,7 @@
           <div class="toast-body">Nova notificação às ${new Date().toLocaleTimeString()}</div>
           <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
         </div>`;
-      listaNotificacoes.prepend(toast);
+      listaNotificacoes?.prepend(toast);
     });
   }
 
@@ -661,4 +725,8 @@
   renderGraficoTurma();
   popularTurmasNotas();
   renderTabelaNotas();
+
+  // NOVO: se for aluno, mostrar notificações novas sobre eventos adicionados
+  mostrarNotificacoesNovasParaAluno();
+
 })();
