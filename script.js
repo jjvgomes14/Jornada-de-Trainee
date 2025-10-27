@@ -1,5 +1,5 @@
 (function () {
-  // Pegar elementos
+  // Elementos
   var form = document.getElementById('formLogin');
   var inpUsuario = document.getElementById('usuario');
   var inpSenha = document.getElementById('senha');
@@ -11,7 +11,7 @@
   var labelTema = document.getElementById('labelTema');
   var body = document.body;
 
-  // --- Tema claro/escuro ---
+  // Tema Claro/Escuro
   var tema = localStorage.getItem('tema') || 'light';
   aplicarTema(tema);
 
@@ -27,7 +27,7 @@
     switchTema.checked = (nome === 'dark');
   }
 
-  // --- Mostrar/ocultar senha ---
+  // Mostrar/Ocultar senha
   btnOlho.addEventListener('click', function () {
     if (inpSenha.type === 'password') {
       inpSenha.type = 'text';
@@ -40,7 +40,7 @@
     }
   });
 
-  // --- Login simples ---
+  // Login
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     feedback.textContent = '';

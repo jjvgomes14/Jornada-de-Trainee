@@ -1,5 +1,5 @@
 (function () {
-  // ========= Sessão mínima =========
+  // Elementos
   var usuario = localStorage.getItem('usuarioLogado') || '';
   var tipo = localStorage.getItem('tipoUsuario') || '';
   var isAdmin = (tipo === 'administrador');
@@ -9,7 +9,7 @@
   var nomeUsuario = document.getElementById('nomeUsuario');
   if (nomeUsuario) { nomeUsuario.textContent = usuario; }
 
-  // ========= Tema =========
+  // Tema Claro/Escuro
   var body = document.body;
   var switchTema = document.getElementById('switchTema');
   var labelTema = document.getElementById('labelTema');
@@ -28,7 +28,7 @@
     if (switchTema) switchTema.checked = (nome === 'dark');
   }
 
-  // ========= Sair =========
+  // Sair
   var btnSair = document.getElementById('btnSair');
   if (btnSair) {
     btnSair.addEventListener('click', function () {
@@ -38,7 +38,7 @@
     });
   }
 
-  // ========= Menus por tipo de usuário =========
+  // Ajustar menu dependendo do usuário
   function esconderSecoesPorPerfil() {
     var ocultar = [];
     if (isAdmin) { ocultar = ['sec-graficos','sec-calendario','sec-notificacoes','sec-notas']; }
@@ -53,7 +53,6 @@
       if (sec) sec.classList.add('d-none');
     }
 
-    // Corrigir aba ativa se foi escondida
     var ativo = document.querySelector('#menu .nav-link.active');
     if (ativo && ocultar.indexOf(ativo.getAttribute('data-section')) !== -1) {
       ativo.classList.remove('active');
@@ -69,7 +68,7 @@
   }
   esconderSecoesPorPerfil();
 
-  // ========= Navegação simples =========
+  // Navegação de itens
   var links = document.querySelectorAll('#menu .nav-link');
   for (var k = 0; k < links.length; k++) {
     links[k].addEventListener('click', function (e) {
@@ -85,7 +84,7 @@
     });
   }
 
-  // ========= LocalStorage (dados) =========
+  // Armazenamento Local
   var KEY_ALUNOS  = 'alunos';
   var KEY_PROFS   = 'professores';
   var KEY_EVENTOS = 'eventos';
@@ -104,7 +103,7 @@
   var professores = lerJSON(KEY_PROFS);
   var eventosStore = lerJSON(KEY_EVENTOS);
 
-  // ========= Notificações (helpers) =========
+  // Notificações
   var listaNotificacoes = document.getElementById('listaNotificacoes');
 
   function salvarNotificacao(ev) {
@@ -155,7 +154,7 @@
     localStorage.setItem(KEY_VISTAS, JSON.stringify(vistas));
   }
 
-  // ========= Cadastro: Alunos =========
+  // Cadastro de alunos
   var formAluno = document.getElementById('formAluno');
   if (formAluno) {
     formAluno.addEventListener('submit', function (e) {
@@ -178,7 +177,7 @@
     });
   }
 
-  // ========= Cadastro: Professores =========
+  // Cadastro de professores
   var formProfessor = document.getElementById('formProfessor');
   if (formProfessor) {
     formProfessor.addEventListener('submit', function (e) {
@@ -204,7 +203,7 @@
     el.className = 'small mt-1 ' + (erro ? 'text-danger' : 'text-success');
   }
 
-  // ========= Listagem + filtros =========
+  // Filtros nas listas
   var selTurma = document.getElementById('selTurma');
   var selDisc  = document.getElementById('selDisciplina');
   var filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
@@ -235,7 +234,7 @@
   }
 
   function atualizarFiltros() {
-    // turmas
+    // Turmas
     if (selTurma) {
       var atual = selTurma.value || '__todas__';
       var setTurmas = {};
@@ -249,7 +248,7 @@
       selTurma.innerHTML = opts;
       if (atual) selTurma.value = atual;
     }
-    // disciplinas (depto)
+    // Disciplina
     if (selDisc) {
       var atualD = selDisc.value || '__todas__';
       var setDisc = {};
@@ -266,7 +265,7 @@
   }
 
   function renderListas() {
-    // alunos
+    // Alunos
     var tbA = document.getElementById('tbodyAlunos');
     if (tbA) {
       var filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
@@ -290,7 +289,7 @@
         tbA.appendChild(tr);
       }
     }
-    // professores
+    // Professores
     var tbP = document.getElementById('tbodyProfessores');
     if (tbP) {
       var filtroD = selDisc ? (selDisc.value || '__todas__') : '__todas__';
@@ -312,7 +311,7 @@
     }
   }
 
-  // ações (editar/excluir)
+  // Editar/Excluir 
   var secListagem = document.getElementById('sec-listagem');
   if (secListagem) {
     secListagem.addEventListener('click', function (e) {
@@ -340,7 +339,7 @@
     });
   }
 
-  // modal editar
+  // Aba de edição
   var modalEl = document.getElementById('modalEditar');
   var formModal = document.getElementById('formModalEditar');
   var modal;
@@ -403,7 +402,7 @@
     });
   }
 
-  // ========= Gráficos =========
+  // Gráficos
   var selTurmaGraf = document.getElementById('selTurmaGraf');
   if (selTurmaGraf) selTurmaGraf.addEventListener('change', atualizarGraficos);
   var chartNotas;
@@ -425,7 +424,7 @@
     var dados = [];
 
     if (turma === '__selecione__') {
-      // médias por turma
+      // Média das turmas
       var setTurmas = {};
       for (var i = 0; i < alunos.length; i++) {
         if (alunos[i].turma) setTurmas[alunos[i].turma] = true;
@@ -451,7 +450,7 @@
       }
       if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
     } else {
-      // médias por aluno da turma
+      // Médias dos alunos
       var alunosTurma = [];
       for (var i2 = 0; i2 < alunos.length; i2++) {
         if (alunos[i2].turma === turma) alunosTurma.push(alunos[i2]);
@@ -486,7 +485,7 @@
     else { chartNotas = new Chart(canvas, { type: 'bar', data: cfg, options: opt }); }
   }
 
-  // ========= Notas =========
+  // Notas
   var selTurmaNotas = document.getElementById('selTurmaNotas');
   var tbodyNotas = document.getElementById('tbodyNotas');
   if (selTurmaNotas) selTurmaNotas.addEventListener('change', atualizarNotas);
@@ -582,7 +581,7 @@
     });
   }
 
-  // ========= Calendário (FullCalendar) =========
+  // Calendário 
   var calEl = document.getElementById('calendario');
   if (calEl && window.FullCalendar) {
     var calendar = new FullCalendar.Calendar(calEl, {
@@ -612,13 +611,13 @@
         var ev = { id: 'ev-' + Date.now(), title: title, start: sel.startStr, end: sel.endStr, allDay: true };
         calendar.addEvent(ev);
         salvarEventos(calendar);
-        // notificar alunos
+        // Notificação ao criar novo evento
         salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
       }
     });
     calendar.render();
 
-    // Botão "Adicionar evento" via modal (professor)
+    // Adicionar Evento
     var btnAddEvento = document.getElementById('btnAddEvento');
     var modalEventoEl = document.getElementById('modalEvento');
     var formEvento = document.getElementById('formEvento');
@@ -643,7 +642,7 @@
           calendar.addEvent(ev);
           salvarEventos(calendar);
           if (modalEvento) modalEvento.hide();
-          // notificar alunos
+          // Notificação ao criar novo evento
           salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
         });
       }
@@ -666,12 +665,12 @@
     }
   }
 
-  // ========= Inicialização =========
+  // Inicialização
   atualizarFiltros();
   renderListas();
   atualizarSelTurmas(document.getElementById('selTurmaGraf'));
   atualizarGraficos();
   atualizarSelTurmas(document.getElementById('selTurmaNotas'));
   atualizarNotas();
-  mostrarNotifsNovasAluno(); // aluno vê toasts de eventos novos
+  mostrarNotifsNovasAluno();
 })();
