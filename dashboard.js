@@ -191,14 +191,14 @@
       e.preventDefault();
       var nome  = (document.getElementById('profNome').value || '').trim();
       var email = (document.getElementById('profEmail').value || '').trim();
-      var depto = (document.getElementById('profDepto').value || '').trim();
+      var disc = (document.getElementById('profDisc').value || '').trim();
       var fb = document.getElementById('fbProfessor');
-      if (!nome || !email || !depto) {
+      if (!nome || !email || !disc) {
         setFb(fb, 'Preencha todos os campos.', true); 
         return;
       }
 
-      professores.push({ nome: nome, email: email, depto: depto });
+      professores.push({ nome: nome, email: email, disc: disc });
       gravarJSON(KEY_PROFS, professores);
       formProfessor.reset();
       setFb(fb, 'Professor cadastrado!', false);
@@ -263,7 +263,7 @@
       var atualD = selDisc.value || '__todas__';
       var setDisc = {};
       for (var p = 0; p < professores.length; p++) {
-        var d = (professores[p].depto || '').trim();
+        var d = (professores[p].disc || '').trim();
         if (d) setDisc[d] = true;
       }
       var discs = Object.keys(setDisc).sort();
@@ -306,7 +306,7 @@
       tbP.innerHTML = '';
       for (var j = 0; j < professores.length; j++) {
         var p = professores[j];
-        if (filtroD !== '__todas__' && (p.depto || '') !== filtroD) continue;
+        if (filtroD !== '__todas__' && (p.disc || '') !== filtroD) continue;
         var trp = document.createElement('tr');
         var acaoP = '';
         if (isAdmin) {
@@ -315,7 +315,7 @@
             '<button class="btn btn-sm btn-outline-danger btn-excluir" data-tipo="professor" data-idx="' + j + '">Excluir</button>' +
           '</td>';
         }
-        trp.innerHTML = '<td>' + p.nome + '</td><td>' + p.email + '</td><td>' + (p.depto || '—') + '</td>' + acaoP;
+        trp.innerHTML = '<td>' + p.nome + '</td><td>' + p.email + '</td><td>' + (p.disc || '—') + '</td>' + acaoP;
         tbP.appendChild(trp);
       }
     }
@@ -384,7 +384,7 @@
       var p = professores[idx] || {};
       document.getElementById('mProfNome').value  = p.nome  || '';
       document.getElementById('mProfEmail').value = p.email || '';
-      document.getElementById('mProfDepto').value = p.depto || '';
+      document.getElementById('mProfDisc').value = p.disc || '';
     }
 
     modal = modal || new bootstrap.Modal(modalEl);
@@ -409,9 +409,9 @@
       } else {
         var np = (document.getElementById('mProfNome').value || '').trim();
         var ep = (document.getElementById('mProfEmail').value || '').trim();
-        var dp = (document.getElementById('mProfDepto').value || '').trim();
+        var dp = (document.getElementById('mProfDisc').value || '').trim();
         if (!np || !ep || !dp) return;
-        professores[idx] = { nome: np, email: ep, depto: dp };
+        professores[idx] = { nome: np, email: ep, disc: dp };
         gravarJSON(KEY_PROFS, professores);
       }
 
