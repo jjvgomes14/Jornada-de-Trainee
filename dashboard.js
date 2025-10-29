@@ -1,5 +1,4 @@
 (function () {
-  // ========= Sessão mínima =========
   var usuario = localStorage.getItem('usuarioLogado') || '';
   var tipo = localStorage.getItem('tipoUsuario') || '';
   var isAdmin = (tipo === 'administrador');
@@ -9,7 +8,7 @@
   var nomeUsuario = document.getElementById('nomeUsuario');
   if (nomeUsuario) { nomeUsuario.textContent = usuario; }
 
-  // ========= Tema =========
+  // Tema Claro/Escuro
   var body = document.body;
   var switchTema = document.getElementById('switchTema');
   var labelTema = document.getElementById('labelTema');
@@ -28,7 +27,7 @@
     if (switchTema) switchTema.checked = (nome === 'dark');
   }
 
-  // ========= Sair =========
+  // Botão sair
   var btnSair = document.getElementById('btnSair');
   if (btnSair) {
     btnSair.addEventListener('click', function () {
@@ -38,12 +37,16 @@
     });
   }
 
-  // ========= Menus por tipo de usuário =========
+  // Menu dependendo do usuário
   function esconderSecoesPorPerfil() {
     var ocultar = [];
-    if (isAdmin) { ocultar = ['sec-graficos','sec-calendario','sec-notificacoes','sec-notas']; }
-    else if (isProfessor) { ocultar = ['sec-cadastro','sec-notificacoes']; }
-    else { ocultar = ['sec-cadastro','sec-notas']; } // aluno
+    if (isAdmin) {
+      ocultar = ['sec-graficos','sec-calendario','sec-notificacoes','sec-notas']; 
+    } else if (isProfessor) {
+      ocultar = ['sec-cadastro','sec-notificacoes'];
+    } else {
+      ocultar = ['sec-cadastro','sec-notas'];
+    }
 
     for (var i = 0; i < ocultar.length; i++) {
       var id = ocultar[i];
@@ -53,7 +56,6 @@
       if (sec) sec.classList.add('d-none');
     }
 
-    // Corrigir aba ativa se foi escondida
     var ativo = document.querySelector('#menu .nav-link.active');
     if (ativo && ocultar.indexOf(ativo.getAttribute('data-section')) !== -1) {
       ativo.classList.remove('active');
@@ -69,7 +71,7 @@
   }
   esconderSecoesPorPerfil();
 
-  // ========= Navegação simples =========
+  // Navegação entre usuários
   var links = document.querySelectorAll('#menu .nav-link');
   for (var k = 0; k < links.length; k++) {
     links[k].addEventListener('click', function (e) {
@@ -85,7 +87,7 @@
     });
   }
 
-  // ========= LocalStorage (dados) =========
+  // Armazenamento local
   var KEY_ALUNOS  = 'alunos';
   var KEY_PROFS   = 'professores';
   var KEY_EVENTOS = 'eventos';
@@ -104,7 +106,7 @@
   var professores = lerJSON(KEY_PROFS);
   var eventosStore = lerJSON(KEY_EVENTOS);
 
-  // ========= Notificações (helpers) =========
+  // Notificações
   var listaNotificacoes = document.getElementById('listaNotificacoes');
 
   function salvarNotificacao(ev) {
@@ -136,7 +138,8 @@
     if (!isAluno) return;
     var notifs = lerJSON(KEY_NOTIFS);
     var vistas = [];
-    try { vistas = JSON.parse(localStorage.getItem(KEY_VISTAS) || '[]'); } catch(e) { vistas = []; }
+    try { vistas = JSON.parse(localStorage.getItem(KEY_VISTAS) || '[]'); } 
+    catch(e) { vistas = []; }
     var setVistas = {};
     for (var i = 0; i < vistas.length; i++) setVistas[vistas[i]] = true;
 
@@ -144,7 +147,7 @@
     for (var j = 0; j < notifs.length; j++) {
       if (!setVistas[notifs[j].id]) novas.push(notifs[j]);
     }
-    // mostrar últimas 10
+    // Ultimas 10 notificações
     var inicio = Math.max(0, novas.length - 10);
     for (var u = inicio; u < novas.length; u++) {
       var n = novas[u];
@@ -155,7 +158,7 @@
     localStorage.setItem(KEY_VISTAS, JSON.stringify(vistas));
   }
 
-  // ========= Cadastro: Alunos =========
+  // Cadastro de Alunos
   var formAluno = document.getElementById('formAluno');
   if (formAluno) {
     formAluno.addEventListener('submit', function (e) {
@@ -165,7 +168,10 @@
       var ra    = (document.getElementById('alunoRA').value || '').trim();
       var turma = (document.getElementById('alunoTurma').value || '').trim();
       var fb = document.getElementById('fbAluno');
-      if (!nome || !email || !ra || !turma) { setFb(fb, 'Preencha todos os campos.', true); return; }
+      if (!nome || !email || !ra || !turma) {
+        setFb(fb, 'Preencha todos os campos.', true);
+        return;
+      }
 
       alunos.push({ nome: nome, email: email, ra: ra, turma: turma, notas: [] });
       gravarJSON(KEY_ALUNOS, alunos);
@@ -178,7 +184,7 @@
     });
   }
 
-  // ========= Cadastro: Professores =========
+  // Cadastro de Professores
   var formProfessor = document.getElementById('formProfessor');
   if (formProfessor) {
     formProfessor.addEventListener('submit', function (e) {
@@ -187,7 +193,10 @@
       var email = (document.getElementById('profEmail').value || '').trim();
       var depto = (document.getElementById('profDepto').value || '').trim();
       var fb = document.getElementById('fbProfessor');
-      if (!nome || !email || !depto) { setFb(fb, 'Preencha todos os campos.', true); return; }
+      if (!nome || !email || !depto) {
+        setFb(fb, 'Preencha todos os campos.', true); 
+        return;
+      }
 
       professores.push({ nome: nome, email: email, depto: depto });
       gravarJSON(KEY_PROFS, professores);
@@ -204,7 +213,7 @@
     el.className = 'small mt-1 ' + (erro ? 'text-danger' : 'text-success');
   }
 
-  // ========= Listagem + filtros =========
+  // Lista com filtros
   var selTurma = document.getElementById('selTurma');
   var selDisc  = document.getElementById('selDisciplina');
   var filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
@@ -235,7 +244,7 @@
   }
 
   function atualizarFiltros() {
-    // turmas
+    // Turmas
     if (selTurma) {
       var atual = selTurma.value || '__todas__';
       var setTurmas = {};
@@ -249,7 +258,7 @@
       selTurma.innerHTML = opts;
       if (atual) selTurma.value = atual;
     }
-    // disciplinas (depto)
+    // Disciplinas
     if (selDisc) {
       var atualD = selDisc.value || '__todas__';
       var setDisc = {};
@@ -266,7 +275,7 @@
   }
 
   function renderListas() {
-    // alunos
+    // Lista de alunos
     var tbA = document.getElementById('tbodyAlunos');
     if (tbA) {
       var filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
@@ -290,7 +299,7 @@
         tbA.appendChild(tr);
       }
     }
-    // professores
+    // Lista de professores
     var tbP = document.getElementById('tbodyProfessores');
     if (tbP) {
       var filtroD = selDisc ? (selDisc.value || '__todas__') : '__todas__';
@@ -312,7 +321,7 @@
     }
   }
 
-  // ações (editar/excluir)
+  // Editar/Excluir
   var secListagem = document.getElementById('sec-listagem');
   if (secListagem) {
     secListagem.addEventListener('click', function (e) {
@@ -327,9 +336,17 @@
         var idx = parseInt(btn.getAttribute('data-idx'), 10);
         var nomeEnt = (tipoX === 'aluno') ? (alunos[idx] && alunos[idx].nome) : (professores[idx] && professores[idx].nome);
         if (confirm('Excluir ' + tipoX + ' "' + nomeEnt + '"?')) {
-          if (tipoX === 'aluno') { alunos.splice(idx,1); gravarJSON(KEY_ALUNOS, alunos); }
-          else { professores.splice(idx,1); gravarJSON(KEY_PROFS, professores); }
-          atualizarFiltros(); atualizarGraficos(); atualizarNotas(); renderListas();
+          if (tipoX === 'aluno') {
+            alunos.splice(idx,1);
+            gravarJSON(KEY_ALUNOS, alunos);
+          } else {
+              professores.splice(idx,1);
+              gravarJSON(KEY_PROFS, professores);
+          }
+          atualizarFiltros();
+          atualizarGraficos();
+          atualizarNotas();
+          renderListas();
         }
         return;
       }
@@ -340,7 +357,7 @@
     });
   }
 
-  // modal editar
+  // Modal de edição
   var modalEl = document.getElementById('modalEditar');
   var formModal = document.getElementById('formModalEditar');
   var modal;
@@ -399,11 +416,14 @@
       }
 
       if (modal) modal.hide();
-      atualizarFiltros(); atualizarGraficos(); atualizarNotas(); renderListas();
+      atualizarFiltros();
+      atualizarGraficos();
+      atualizarNotas();
+      renderListas();
     });
   }
 
-  // ========= Gráficos =========
+  // Gráficos
   var selTurmaGraf = document.getElementById('selTurmaGraf');
   if (selTurmaGraf) selTurmaGraf.addEventListener('change', atualizarGraficos);
   var chartNotas;
@@ -425,7 +445,7 @@
     var dados = [];
 
     if (turma === '__selecione__') {
-      // médias por turma
+      // Médias por turma
       var setTurmas = {};
       for (var i = 0; i < alunos.length; i++) {
         if (alunos[i].turma) setTurmas[alunos[i].turma] = true;
@@ -433,7 +453,9 @@
       var turmas = Object.keys(setTurmas).sort();
       if (!turmas.length) {
         if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
-        if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
+        if (chartNotas) {
+          chartNotas.destroy(); chartNotas = null;
+        }
         return;
       }
       labels = turmas;
@@ -451,14 +473,16 @@
       }
       if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
     } else {
-      // médias por aluno da turma
+      // Médias por Aluno
       var alunosTurma = [];
       for (var i2 = 0; i2 < alunos.length; i2++) {
         if (alunos[i2].turma === turma) alunosTurma.push(alunos[i2]);
       }
       if (!alunosTurma.length) {
         if (msg) msg.textContent = 'Nenhum aluno encontrado nessa turma.';
-        if (chartNotas) { chartNotas.destroy(); chartNotas = null; }
+        if (chartNotas) {
+          chartNotas.destroy(); chartNotas = null;
+        }
         return;
       }
       for (var k2 = 0; k2 < alunosTurma.length; k2++) {
@@ -480,13 +504,18 @@
       labels: labels,
       datasets: [{ label: (turma === '__selecione__' ? 'Média das Turmas' : ('Média — ' + turma)), data: dados, backgroundColor: '#0d6efd80' }]
     };
-    var opt = { responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 } } };
+    var opt = {
+      responsive: true, scales: { y: { beginAtZero: true, suggestedMax: 10 }}
+    };
 
-    if (chartNotas) { chartNotas.data = cfg; chartNotas.options = opt; chartNotas.update(); }
-    else { chartNotas = new Chart(canvas, { type: 'bar', data: cfg, options: opt }); }
+    if (chartNotas) {
+      chartNotas.data = cfg; chartNotas.options = opt; chartNotas.update();
+    } else {
+      chartNotas = new Chart(canvas, { type: 'bar', data: cfg, options: opt });
+    }
   }
 
-  // ========= Notas =========
+  // Notas
   var selTurmaNotas = document.getElementById('selTurmaNotas');
   var tbodyNotas = document.getElementById('tbodyNotas');
   if (selTurmaNotas) selTurmaNotas.addEventListener('change', atualizarNotas);
@@ -563,12 +592,16 @@
         var aidx = parseInt(e.target.getAttribute('data-aidx'),10);
         var inp = tbodyNotas.querySelector('.inp-nova-nota[data-aidx="' + aidx + '"]');
         var val = parseFloat((inp && inp.value ? inp.value : '').replace(',', '.'));
-        if (isNaN(val) || val < 0 || val > 10) { alert('Informe uma nota válida entre 0 e 10.'); return; }
+        if (isNaN(val) || val < 0 || val > 10) {
+          alert('Informe uma nota válida entre 0 e 10.');
+          return;
+        }
         if (!Array.isArray(alunos[aidx].notas)) alunos[aidx].notas = [];
         alunos[aidx].notas.push(Number(val));
         gravarJSON(KEY_ALUNOS, alunos);
         inp.value = '';
-        atualizarNotas(); atualizarGraficos();
+        atualizarNotas(); 
+        atualizarGraficos();
       }
 
       if (rem) {
@@ -577,12 +610,13 @@
         var nidx = parseInt(e.target.getAttribute('data-nidx'),10);
         if (Array.isArray(alunos[aidx2].notas)) alunos[aidx2].notas.splice(nidx,1);
         gravarJSON(KEY_ALUNOS, alunos);
-        atualizarNotas(); atualizarGraficos();
+        atualizarNotas(); 
+        atualizarGraficos();
       }
     });
   }
 
-  // ========= Calendário (FullCalendar) =========
+  // Calendário
   var calEl = document.getElementById('calendario');
   if (calEl && window.FullCalendar) {
     var calendar = new FullCalendar.Calendar(calEl, {
@@ -598,13 +632,20 @@
         var novo = prompt('Editar título (deixe vazio para excluir):', ev.title);
         if (novo === null) return;
         if (novo === '') {
-          if (confirm('Excluir este evento?')) { ev.remove(); salvarEventos(calendar); }
+          if (confirm('Excluir este evento?')) {
+            ev.remove(); salvarEventos(calendar);
+          }
         } else {
-          ev.setProp('title', novo); salvarEventos(calendar);
+          ev.setProp('title', novo); 
+          salvarEventos(calendar);
         }
       },
-      eventDrop: function(){ if (isProfessor) salvarEventos(calendar); },
-      eventResize: function(){ if (isProfessor) salvarEventos(calendar); },
+      eventDrop: function(){ 
+        if (isProfessor) salvarEventos(calendar);
+      },
+      eventResize: function(){
+        if (isProfessor) salvarEventos(calendar);
+      },
       select: function(sel) {
         if (!isProfessor) return;
         var title = prompt('Título do evento (intervalo selecionado):');
@@ -612,19 +653,21 @@
         var ev = { id: 'ev-' + Date.now(), title: title, start: sel.startStr, end: sel.endStr, allDay: true };
         calendar.addEvent(ev);
         salvarEventos(calendar);
-        // notificar alunos
+        // Notificar Alunos
         salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
       }
     });
     calendar.render();
 
-    // Botão "Adicionar evento" via modal (professor)
+    // Modal de adicionar evento
     var btnAddEvento = document.getElementById('btnAddEvento');
     var modalEventoEl = document.getElementById('modalEvento');
     var formEvento = document.getElementById('formEvento');
     var modalEvento;
 
-    if (!isProfessor && btnAddEvento) { btnAddEvento.classList.add('d-none'); }
+    if (!isProfessor && btnAddEvento) {
+      btnAddEvento.classList.add('d-none');
+    }
     if (isProfessor && btnAddEvento) {
       btnAddEvento.addEventListener('click', function () {
         if (!modalEvento) modalEvento = new bootstrap.Modal(modalEventoEl);
@@ -637,13 +680,16 @@
           var title = (document.getElementById('evtTitulo').value || '').trim();
           var start = document.getElementById('evtInicio').value;
           var end = document.getElementById('evtFim').value;
-          if (!title || !start) { alert('Preencha pelo menos o título e a data inicial.'); return; }
+          if (!title || !start) {
+            alert('Preencha pelo menos o título e a data inicial.');
+            return;
+          }
           var ev = { id: 'ev-' + Date.now(), title: title, start: start };
           if (end) ev.end = end;
           calendar.addEvent(ev);
           salvarEventos(calendar);
           if (modalEvento) modalEvento.hide();
-          // notificar alunos
+          // Notificar alunos
           salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
         });
       }
@@ -666,12 +712,12 @@
     }
   }
 
-  // ========= Inicialização =========
+  // Inicializar
   atualizarFiltros();
   renderListas();
   atualizarSelTurmas(document.getElementById('selTurmaGraf'));
   atualizarGraficos();
   atualizarSelTurmas(document.getElementById('selTurmaNotas'));
   atualizarNotas();
-  mostrarNotifsNovasAluno(); // aluno vê toasts de eventos novos
+  mostrarNotifsNovasAluno();
 })();

@@ -1,17 +1,15 @@
 (function () {
-  // Pegar elementos
   var form = document.getElementById('formLogin');
   var inpUsuario = document.getElementById('usuario');
   var inpSenha = document.getElementById('senha');
   var erroUsuario = document.getElementById('erroUsuario');
   var erroSenha = document.getElementById('erroSenha');
   var feedback = document.getElementById('feedback');
-  var btnOlho = document.getElementById('btnOlho');
   var switchTema = document.getElementById('switchTema');
   var labelTema = document.getElementById('labelTema');
   var body = document.body;
 
-  // --- Tema claro/escuro ---
+  // Tema Claro/Escuro
   var tema = localStorage.getItem('tema') || 'light';
   aplicarTema(tema);
 
@@ -27,20 +25,7 @@
     switchTema.checked = (nome === 'dark');
   }
 
-  // --- Mostrar/ocultar senha ---
-  btnOlho.addEventListener('click', function () {
-    if (inpSenha.type === 'password') {
-      inpSenha.type = 'text';
-      btnOlho.textContent = '🙈';
-      btnOlho.setAttribute('aria-label', 'Ocultar senha');
-    } else {
-      inpSenha.type = 'password';
-      btnOlho.textContent = '👁️';
-      btnOlho.setAttribute('aria-label', 'Mostrar senha');
-    }
-  });
-
-  // --- Login simples ---
+  // Login
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     feedback.textContent = '';
@@ -50,8 +35,14 @@
     var login = (inpUsuario.value || '').trim();
     var senha = (inpSenha.value || '').trim();
 
-    if (!login) { erroUsuario.textContent = 'Informe seu usuário.'; return; }
-    if (!senha) { erroSenha.textContent = 'Informe sua senha.'; return; }
+    if (!login) {
+      erroUsuario.textContent = 'Informe seu usuário.'; 
+      return;
+    }
+    if (!senha) {
+      erroSenha.textContent = 'Informe sua senha.'; 
+      return;
+    }
 
     // Usuários de teste
     var usuarios = [
