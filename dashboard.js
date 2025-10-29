@@ -27,7 +27,7 @@
     if (switchTema) switchTema.checked = (nome === 'dark');
   }
 
-  // Botão sair
+  // Sair
   var btnSair = document.getElementById('btnSair');
   if (btnSair) {
     btnSair.addEventListener('click', function () {
@@ -37,7 +37,7 @@
     });
   }
 
-  // Menu dependendo do usuário
+  // Ajustar menu dependendo do usuário
   function esconderSecoesPorPerfil() {
     var ocultar = [];
     if (isAdmin) {
@@ -71,7 +71,7 @@
   }
   esconderSecoesPorPerfil();
 
-  // Navegação entre usuários
+  // Navegação de itens
   var links = document.querySelectorAll('#menu .nav-link');
   for (var k = 0; k < links.length; k++) {
     links[k].addEventListener('click', function (e) {
@@ -87,7 +87,7 @@
     });
   }
 
-  // Armazenamento local
+  // Armazenamento Local
   var KEY_ALUNOS  = 'alunos';
   var KEY_PROFS   = 'professores';
   var KEY_EVENTOS = 'eventos';
@@ -158,7 +158,7 @@
     localStorage.setItem(KEY_VISTAS, JSON.stringify(vistas));
   }
 
-  // Cadastro de Alunos
+  // Cadastro de alunos
   var formAluno = document.getElementById('formAluno');
   if (formAluno) {
     formAluno.addEventListener('submit', function (e) {
@@ -184,7 +184,7 @@
     });
   }
 
-  // Cadastro de Professores
+  // Cadastro de professores
   var formProfessor = document.getElementById('formProfessor');
   if (formProfessor) {
     formProfessor.addEventListener('submit', function (e) {
@@ -213,7 +213,7 @@
     el.className = 'small mt-1 ' + (erro ? 'text-danger' : 'text-success');
   }
 
-  // Lista com filtros
+  // Filtros nas listas
   var selTurma = document.getElementById('selTurma');
   var selDisc  = document.getElementById('selDisciplina');
   var filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
@@ -258,7 +258,7 @@
       selTurma.innerHTML = opts;
       if (atual) selTurma.value = atual;
     }
-    // Disciplinas
+    // Disciplina
     if (selDisc) {
       var atualD = selDisc.value || '__todas__';
       var setDisc = {};
@@ -275,7 +275,7 @@
   }
 
   function renderListas() {
-    // Lista de alunos
+    // Alunos
     var tbA = document.getElementById('tbodyAlunos');
     if (tbA) {
       var filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
@@ -321,7 +321,7 @@
     }
   }
 
-  // Editar/Excluir
+  // Editar/Excluir 
   var secListagem = document.getElementById('sec-listagem');
   if (secListagem) {
     secListagem.addEventListener('click', function (e) {
@@ -357,7 +357,7 @@
     });
   }
 
-  // Modal de edição
+  // Aba de edição
   var modalEl = document.getElementById('modalEditar');
   var formModal = document.getElementById('formModalEditar');
   var modal;
@@ -445,7 +445,7 @@
     var dados = [];
 
     if (turma === '__selecione__') {
-      // Médias por turma
+      // Média das turmas
       var setTurmas = {};
       for (var i = 0; i < alunos.length; i++) {
         if (alunos[i].turma) setTurmas[alunos[i].turma] = true;
@@ -473,7 +473,7 @@
       }
       if (msg) msg.textContent = 'Médias gerais de todas as turmas.';
     } else {
-      // Médias por Aluno
+      // Médias dos alunos
       var alunosTurma = [];
       for (var i2 = 0; i2 < alunos.length; i2++) {
         if (alunos[i2].turma === turma) alunosTurma.push(alunos[i2]);
@@ -616,7 +616,7 @@
     });
   }
 
-  // Calendário
+  // Calendário 
   var calEl = document.getElementById('calendario');
   if (calEl && window.FullCalendar) {
     var calendar = new FullCalendar.Calendar(calEl, {
@@ -653,7 +653,7 @@
         var ev = { id: 'ev-' + Date.now(), title: title, start: sel.startStr, end: sel.endStr, allDay: true };
         calendar.addEvent(ev);
         salvarEventos(calendar);
-        // Notificar Alunos
+        // Notificação ao criar novo evento
         salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
       }
     });
