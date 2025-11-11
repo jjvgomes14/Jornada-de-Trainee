@@ -84,6 +84,17 @@
       for (var b = 0; b < secs.length; b++) secs[b].classList.add('d-none');
       var open = document.getElementById(alvo);
       if (open) open.classList.remove('d-none');
+
+      if (alvo === 'sec-calendario' && calendar){
+        setTimeout(function(){
+          if (!calendarRendered){
+            calendar.render();
+            calendarRendered = true;
+          } else{
+            calendar.updateSize();
+          }
+        }, 0);
+      }
     });
   }
 
@@ -624,8 +635,10 @@
 
   // Calendário 
   var calEl = document.getElementById('calendario');
+  var calendar;
+  var calendarRendered = false;
   if (calEl && window.FullCalendar) {
-    var calendar = new FullCalendar.Calendar(calEl, {
+    calendar = new FullCalendar.Calendar(calEl, {
       initialView: 'dayGridMonth',
       height: 'auto',
       headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
@@ -663,7 +676,6 @@
         salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start }, 'novo');
       }
     });
-    calendar.render();
 
     // Modal de adicionar evento
     var btnAddEvento = document.getElementById('btnAddEvento');
