@@ -109,17 +109,23 @@
   // Notificações
   var listaNotificacoes = document.getElementById('listaNotificacoes');
 
-  function salvarNotificacao(ev) {
-    var notifs = lerJSON(KEY_NOTIFS);
-    notifs.push({
-      id: 'ntf-' + Date.now(),
-      eventoId: ev.id,
-      titulo: ev.title,
-      inicio: ev.startStr || (ev.start && ev.start.toISOString ? ev.start.toISOString().slice(0,10) : ''),
-      criadoEm: new Date().toISOString()
-    });
-    gravarJSON(KEY_NOTIFS, notifs);
-  }
+  function salvarNotificacao(ev, tipo) {
+  var notifs = lerJSON(KEY_NOTIFS);
+  notifs.push({
+    id: 'ntf-' + Date.now(),
+    eventoId: ev.id,
+    titulo: ev.title,
+    inicio: ev.startStr || (ev.start && ev.start.toISOString ? ev.start.toISOString().slice(0,10) : ''),
+    tipo: tipo || 'novo',
+    criadoEm: new Date().toISOString()
+  });
+  gravarJSON(KEY_NOTIFS, notifs);
+}
+
+  function salvarNotificacaoAlteracao(ev, acao) {
+  salvarNotificacao(ev, acao);
+}
+
 
   function renderToast(msg) {
     if (!listaNotificacoes) return;
@@ -313,7 +319,7 @@
           acaoP = '<td>' +
             '<button class="btn btn-sm btn-outline-secondary me-1 btn-editar" data-tipo="professor" data-idx="' + j + '">Editar</button>' +
             '<button class="btn btn-sm btn-outline-danger btn-excluir" data-tipo="professor" data-idx="' + j + '">Excluir</button>' +
-          '</td>';
+            '</td>';
         }
         trp.innerHTML = '<td>' + p.nome + '</td><td>' + p.email + '</td><td>' + (p.disc || '—') + '</td>' + acaoP;
         tbP.appendChild(trp);
@@ -654,7 +660,7 @@
         calendar.addEvent(ev);
         salvarEventos(calendar);
         // Notificação ao criar novo evento
-        salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
+        salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start }, 'novo');
       }
     });
     calendar.render();
@@ -690,7 +696,7 @@
           salvarEventos(calendar);
           if (modalEvento) modalEvento.hide();
           // Notificar alunos
-          salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start });
+          salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start }, 'novo');
         });
       }
     }

@@ -1,4 +1,3 @@
-/* Transições suaves para tema */
 body {
   transition: background-color 0.25s, color 0.25s;
 }
@@ -18,5 +17,4 @@ body {
 
 .d-none { display: none !important; }
 
-/* Toasts sempre visíveis (sem animação para facilitar) */
 .toast { opacity: 1; }
