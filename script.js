@@ -73,4 +73,55 @@
 
     setTimeout(function () { window.location.href = 'dashboard.html'; }, 800);
   });
+
+  // === FORMULÁRIO DE MATRÍCULA (MODAL) ===
+  var formMatricula = document.getElementById('formMatricula');
+  var fbMatricula = document.getElementById('fbMatricula');
+
+  if (formMatricula) {
+    formMatricula.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      if (fbMatricula) {
+        fbMatricula.textContent = '';
+        fbMatricula.className = 'small mt-1';
+      }
+
+      var nome  = (document.getElementById('matNome').value || '').trim();
+      var email = (document.getElementById('matEmail').value || '').trim();
+      var dataNasc = document.getElementById('matDataNasc').value;
+
+      if (!nome || !email || !dataNasc) {
+        fbMatricula.textContent = 'Preencha todos os campos.';
+        fbMatricula.classList.add('text-danger');
+        return;
+      }
+
+      // Salvar no localStorage (simulando envio)
+      try {
+        var pendentes = JSON.parse(localStorage.getItem('solicitacoesMatricula') || '[]');
+        pendentes.push({
+          nome: nome,
+          email: email,
+          dataNasc: dataNasc,
+          criadoEm: new Date().toISOString()
+        });
+        localStorage.setItem('solicitacoesMatricula', JSON.stringify(pendentes));
+      } catch {}
+
+      fbMatricula.textContent = 'Solicitação enviada com sucesso!';
+      fbMatricula.classList.add('text-success');
+
+      formMatricula.reset();
+
+      // Fechar modal após 1s (opcional)
+      setTimeout(function () {
+        var modalEl = document.getElementById('modalMatricula');
+        if (modalEl && window.bootstrap) {
+          var modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+      }, 1000);
+    });
+  }
 })();
