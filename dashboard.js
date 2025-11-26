@@ -1,9 +1,68 @@
 (function () {
+  'use strict';
+
+  // ============================
+  // CONFIGURAÇÃO DA API
+  // ============================
+  const API_BASE_URL = 'http://localhost:5191/api'; // <-- AJUSTE AQUI PARA A SUA API
+
+  var token = localStorage.getItem('authToken');
+  if (!token) {
+    // Se não tiver token, volta pro login
+    window.location.href = 'index.html';
+    return;
+  }
+
+  async function apiFetch(path, options) {
+    const url = API_BASE_URL + path;
+    options = options || {};
+
+    const headers = Object.assign(
+      {},
+      options.headers || {},
+      {
+        Authorization: 'Bearer ' + token
+      }
+    );
+
+    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const resp = await fetch(url, {
+      method: options.method || 'GET',
+      headers: headers,
+      body: options.body
+    });
+
+    if (resp.status === 204) return null;
+
+    let data = null;
+    try {
+      data = await resp.json();
+    } catch {
+      data = null;
+    }
+
+    if (!resp.ok) {
+      const msg = (data && (data.message || data.error)) || 'Erro ao comunicar com o servidor.';
+      throw new Error(msg);
+    }
+
+    return data;
+  }
+
+  // ============================
+  // DADOS BÁSICOS DO USUÁRIO
+  // ============================
   var usuario = localStorage.getItem('usuarioLogado') || '';
-  var tipo = localStorage.getItem('tipoUsuario') || '';
-  var isAdmin = (tipo === 'administrador');
-  var isProfessor = (tipo === 'professor');
-  var isAluno = (!isAdmin && !isProfessor);
+  var tipoRaw = localStorage.getItem('tipoUsuario') || '';
+
+  // No back, Role vem como "Aluno", "Professor" ou "Administrador".
+  var tipoLower = tipoRaw.toLowerCase();
+  var isAdmin = (tipoLower === 'administrador');
+  var isProfessor = (tipoLower === 'professor');
+  var isAluno = (tipoLower === 'aluno' || (!isAdmin && !isProfessor));
 
   var nomeUsuario = document.getElementById('nomeUsuario');
   if (nomeUsuario) { nomeUsuario.textContent = usuario; }
@@ -35,20 +94,21 @@
     btnSair.addEventListener('click', function () {
       localStorage.removeItem('usuarioLogado');
       localStorage.removeItem('tipoUsuario');
+      localStorage.removeItem('authToken');
       window.location.href = 'index.html';
     });
   }
 
-  // === Armazenamento Local ===
+  // === Armazenamento Local (para cadastros locais + notificações) ===
   var KEY_ALUNOS  = 'alunos';
   var KEY_PROFS   = 'professores';
-  var KEY_EVENTOS = 'eventos';
+  var KEY_EVENTOS = 'eventos'; // ainda usamos como cache local dos eventos
   var KEY_NOTIFS  = 'notificacoes_eventos';
   var KEY_VISTAS  = 'notifs_vistas_' + (usuario || 'aluno');
 
   function lerJSON(chave) {
     try { return JSON.parse(localStorage.getItem(chave) || '[]'); }
-    catch(e) { return []; }
+    catch (e) { return []; }
   }
   function gravarJSON(chave, valor) {
     localStorage.setItem(chave, JSON.stringify(valor));
@@ -64,7 +124,7 @@
     var n = aluno.notas;
     var res = [];
     if (!Array.isArray(n)) {
-      aluno.notas = res;
+      aluno.notas = [];
       return res;
     }
     for (var i = 0; i < n.length; i++) {
@@ -72,12 +132,21 @@
       if (typeof item === 'number') {
         res.push({ disciplina: 'Geral', valor: Number(item) });
       } else if (item && typeof item === 'object') {
-        var disc = item.disciplina || item.disc || 'Geral';
-        var v = parseFloat(item.valor);
+        var disc = 'Geral';
+        var v;
+
+        // Formato do back-end: nota { valor, disciplina: { nome: ... } }
+        if (item.disciplina && typeof item.disciplina === 'object') {
+          disc = item.disciplina.nome || item.disciplina.Nome || 'Geral';
+          v = parseFloat(item.valor != null ? item.valor : item.Valor);
+        } else {
+          disc = item.disciplina || item.disc || 'Geral';
+          v = parseFloat(item.valor != null ? item.valor : item.Valor);
+        }
+
         if (!isNaN(v)) res.push({ disciplina: disc, valor: v });
       }
     }
-    aluno.notas = res;
     return res;
   }
 
@@ -120,18 +189,18 @@
   if (isProfessor && professores.length) {
     var up = usuario.toLowerCase();
     for (var iP = 0; iP < professores.length; iP++) {
-      var p = professores[iP];
-      var nomeP = (p.nome || '').toLowerCase();
-      var emailP = (p.email || '').toLowerCase();
-      if (nomeP.indexOf(up) !== -1 || emailP.indexOf(up) !== -1) {
-        professorAtual = p;
+      var p0 = professores[iP];
+      var nomeP0 = (p0.nome || '').toLowerCase();
+      var emailP0 = (p0.email || '').toLowerCase();
+      if (nomeP0.indexOf(up) !== -1 || emailP0.indexOf(up) !== -1) {
+        professorAtual = p0;
         break;
       }
     }
     if (!professorAtual) professorAtual = professores[0];
   }
 
-  var disciplinaProfessorAtual = professorAtual ? (professorAtual.disc || professorAtual.disciplina || '') : '';
+  var disciplinaProfessorAtual = professorAtual ? (professorAtual.disc || professorAtual.disciplina || professorAtual.disciplinaNome || '') : '';
 
   // === Ocultar seções conforme perfil ===
   function esconderSecoesPorPerfil() {
@@ -284,7 +353,7 @@
 
   function atualizarListaEventos() {
     if (!listaEventos || !listaEventosVazia) return;
-    var eventos = lerJSON(KEY_EVENTOS);
+    var eventos = eventosStore || [];
     listaEventos.innerHTML = '';
     if (!eventos.length) {
       listaEventosVazia.classList.remove('d-none');
@@ -548,8 +617,8 @@
     if (selDisc) {
       var atualD = selDisc.value || '__todas__';
       var setDisc = {};
-      for (var p = 0; p < professores.length; p++) {
-        var d = (professores[p].disc || '').trim();
+      for (var p1 = 0; p1 < professores.length; p1++) {
+        var d = (professores[p1].disc || '').trim();
         if (d) setDisc[d] = true;
       }
       var discs = Object.keys(setDisc).sort();
@@ -835,13 +904,13 @@
         return;
       }
       var turmasNotas = {};
-      for (var a = 0; a < alunos.length; a++) {
-        var al = alunos[a];
+      for (var a2 = 0; a2 < alunos.length; a2++) {
+        var al = alunos[a2];
         if (!al.turma) continue;
         var ns = notasDaDisciplina(al, disciplinaProfessorAtual);
         if (!ns.length) continue;
         if (!turmasNotas[al.turma]) turmasNotas[al.turma] = [];
-        for (var n = 0; n < ns.length; n++) turmasNotas[al.turma].push(ns[n]);
+        for (var n2 = 0; n2 < ns.length; n2++) turmasNotas[al.turma].push(ns[n2]);
       }
       var turmas = Object.keys(turmasNotas).sort();
       if (!turmas.length) {
@@ -1039,7 +1108,7 @@
     });
   }
 
-  // === Calendário fullcalendar ===
+  // === Calendário fullcalendar (AGORA INTEGRADO COM API) ===
   var calEl = document.getElementById('calendario');
   if (calEl && window.FullCalendar) {
     calendar = new FullCalendar.Calendar(calEl, {
@@ -1047,34 +1116,99 @@
       height: 'auto',
       headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
       selectable: false,
-      editable: !!isProfessor,
-      events: eventosStore,
-      eventClick: function(info) {
-        if (!isProfessor) return;
+      editable: (isProfessor || isAdmin),
+      events: eventosStore, // cache local inicial, depois substituído pelo que vier da API
+      eventClick: async function(info) {
+        if (!isProfessor && !isAdmin) return;
         var ev = info.event;
         var novo = prompt('Editar título (deixe vazio para excluir):', ev.title);
         if (novo === null) return;
+
+        var idNum = parseInt(ev.id, 10);
+
         if (novo === '') {
           if (confirm('Excluir este evento?')) {
-            ev.remove();
-            salvarEventos(calendar);
-            salvarNotificacaoAlteracao(ev, 'excluido');
+            try {
+              await apiFetch('/Eventos/' + idNum, { method: 'DELETE' });
+              ev.remove();
+              salvarEventos(calendar);
+              salvarNotificacaoAlteracao(ev, 'excluido');
+            } catch (err) {
+              console.error(err);
+              alert(err.message || 'Erro ao excluir evento.');
+            }
           }
         } else {
-          ev.setProp('title', novo);
-          salvarEventos(calendar);
-          salvarNotificacaoAlteracao(ev, 'editado');
+          try {
+            // Atualiza no back
+            var payload = {
+              id: idNum,
+              titulo: novo,
+              dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
+              dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
+              professorId: null
+            };
+            await apiFetch('/Eventos/' + idNum, {
+              method: 'PUT',
+              body: JSON.stringify(payload)
+            });
+
+            ev.setProp('title', novo);
+            salvarEventos(calendar);
+            salvarNotificacaoAlteracao(ev, 'editado');
+          } catch (err2) {
+            console.error(err2);
+            alert(err2.message || 'Erro ao editar evento.');
+          }
         }
       },
-      eventDrop: function(info){
-        if (!isProfessor) return;
-        salvarEventos(calendar);
-        salvarNotificacaoAlteracao(info.event, 'movido');
+      eventDrop: async function(info){
+        if (!isProfessor && !isAdmin) return;
+        var ev = info.event;
+        var idNum = parseInt(ev.id, 10);
+        try {
+          var payload = {
+            id: idNum,
+            titulo: ev.title,
+            dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
+            dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
+            professorId: null
+          };
+          await apiFetch('/Eventos/' + idNum, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+          salvarEventos(calendar);
+          salvarNotificacaoAlteracao(ev, 'movido');
+        } catch (err) {
+          console.error(err);
+          alert(err.message || 'Erro ao mover evento.');
+          info.revert();
+        }
       },
-      eventResize: function(info){
-        if (!isProfessor) return;
-        salvarEventos(calendar);
-        salvarNotificacaoAlteracao(info.event, 'datas_alteradas');
+      eventResize: async function(info){
+        if (!isProfessor && !isAdmin) return;
+        var ev = info.event;
+        var idNum = parseInt(ev.id, 10);
+        try {
+          var payload = {
+            id: idNum,
+            titulo: ev.title,
+            dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
+            dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
+            professorId: null
+          };
+          await apiFetch('/Eventos/' + idNum, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+          salvarEventos(calendar);
+          salvarNotificacaoAlteracao(ev, 'datas_alteradas');
+        } catch (err) {
+          console.error(err);
+          alert(err.message || 'Erro ao redimensionar evento.');
+          info.revert();
+        }
       }
     });
 
@@ -1083,11 +1217,11 @@
     var formEvento = document.getElementById('formEvento');
     var modalEvento;
 
-    if (!isProfessor && btnAddEvento) {
+    if (!isProfessor && !isAdmin && btnAddEvento) {
       btnAddEvento.classList.add('d-none');
     }
 
-    if (isProfessor && btnAddEvento) {
+    if ((isProfessor || isAdmin) && btnAddEvento) {
       btnAddEvento.addEventListener('click', function () {
         if (!modalEvento) modalEvento = new bootstrap.Modal(modalEventoEl);
         if (formEvento) formEvento.reset();
@@ -1095,7 +1229,7 @@
       });
 
       if (formEvento) {
-        formEvento.addEventListener('submit', function (e) {
+        formEvento.addEventListener('submit', async function (e) {
           e.preventDefault();
           var title = (document.getElementById('evtTitulo').value || '').trim();
           var start = document.getElementById('evtInicio').value;
@@ -1104,12 +1238,34 @@
             alert('Preencha pelo menos o título e a data inicial.');
             return;
           }
-          var ev = { id: 'ev-' + Date.now(), title: title, start: start };
-          if (end) ev.end = end;
-          calendar.addEvent(ev);
-          salvarEventos(calendar);
-          if (modalEvento) modalEvento.hide();
-          salvarNotificacao({ id: ev.id, title: ev.title, startStr: ev.start }, 'novo');
+
+          try {
+            // Cria no back
+            var payload = {
+              titulo: title,
+              dataInicio: start,
+              dataFim: end || null,
+              professorId: null
+            };
+            var criado = await apiFetch('/Eventos', {
+              method: 'POST',
+              body: JSON.stringify(payload)
+            });
+
+            var ev = {
+              id: String(criado.id),
+              title: criado.titulo,
+              start: criado.dataInicio,
+              end: criado.dataFim
+            };
+            calendar.addEvent(ev);
+            salvarEventos(calendar);
+            if (modalEvento) modalEvento.hide();
+            salvarNotificacao({ id: ev.id, title: ev.title, startStr: start }, 'novo');
+          } catch (err) {
+            console.error(err);
+            alert(err.message || 'Erro ao criar evento.');
+          }
         });
       }
     }
@@ -1127,9 +1283,38 @@
           allDay: !!e.allDay
         });
       }
-      gravarJSON(KEY_EVENTOS, arr);
+      eventosStore = arr;
+      gravarJSON(KEY_EVENTOS, arr); // cache local opcional
       atualizarListaEventos();
     }
+
+    async function carregarEventos() {
+      try {
+        var lista = await apiFetch('/Eventos', { method: 'GET' });
+        // lista: [{ id, titulo, dataInicio, dataFim, professorId }]
+        eventosStore = (lista || []).map(function(ev) {
+          return {
+            id: String(ev.id),
+            title: ev.titulo,
+            start: ev.dataInicio,
+            end: ev.dataFim,
+            allDay: false
+          };
+        });
+        gravarJSON(KEY_EVENTOS, eventosStore);
+
+        calendar.removeAllEvents();
+        for (var i = 0; i < eventosStore.length; i++) {
+          calendar.addEvent(eventosStore[i]);
+        }
+        salvarEventos(calendar);
+      } catch (err) {
+        console.error('Erro ao carregar eventos da API', err);
+      }
+    }
+
+    // Carrega eventos da API ao iniciar
+    carregarEventos();
   }
 
   // === Inicialização final ===

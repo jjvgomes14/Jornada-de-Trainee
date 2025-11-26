@@ -1,4 +1,11 @@
 (function () {
+  'use strict';
+
+  // ============================
+  // CONFIGURAÇÃO DA API
+  // ============================
+  const API_BASE_URL = 'http://localhost:5191/api'; // <-- AJUSTE AQUI PARA A SUA API
+
   var form = document.getElementById('formLogin');
   var inpUsuario = document.getElementById('usuario');
   var inpSenha = document.getElementById('senha');
@@ -9,7 +16,9 @@
   var labelTema = document.getElementById('labelTema');
   var body = document.body;
 
-  // Tema Claro/Escuro
+  // ============================
+  // TEMA CLARO/ESCURO
+  // ============================
   var tema = localStorage.getItem('tema') || 'light';
   aplicarTema(tema);
 
@@ -25,61 +34,109 @@
     switchTema.checked = (nome === 'dark');
   }
 
-  // Login
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    feedback.textContent = '';
-    erroUsuario.textContent = '';
-    erroSenha.textContent = '';
+  // ============================
+  // HELPER DE CHAMADA À API
+  // ============================
+  async function apiFetch(path, options) {
+    const url = API_BASE_URL + path;
+    const baseHeaders = {};
 
-    var login = (inpUsuario.value || '').trim();
-    var senha = (inpSenha.value || '').trim();
+    // login ainda não tem token
+    if (!options) options = {};
 
-    if (!login) {
-      erroUsuario.textContent = 'Informe seu usuário.'; 
-      return;
-    }
-    if (!senha) {
-      erroSenha.textContent = 'Informe sua senha.'; 
-      return;
+    if (!(options.body instanceof FormData)) {
+      baseHeaders['Content-Type'] = 'application/json';
     }
 
-    // Usuários de teste
-    var usuarios = [
-      { tipo: 'aluno',         usuario: 'aluno',     senha: '123' },
-      { tipo: 'professor',     usuario: 'professor', senha: '456' },
-      { tipo: 'administrador', usuario: 'admin',     senha: '789' }
-    ];
+    const resp = await fetch(url, {
+      method: options.method || 'GET',
+      headers: Object.assign({}, baseHeaders, options.headers || {}),
+      body: options.body
+    });
 
-    var i, achou = null;
-    for (i = 0; i < usuarios.length; i++) {
-      if (usuarios[i].usuario === login && usuarios[i].senha === senha) {
-        achou = usuarios[i];
-        break;
+    if (resp.status === 204) return null;
+
+    let data;
+    try {
+      data = await resp.json();
+    } catch {
+      data = null;
+    }
+
+    if (!resp.ok) {
+      const msg = (data && (data.message || data.error)) || 'Erro ao comunicar com o servidor.';
+      throw new Error(msg);
+    }
+
+    return data;
+  }
+
+  // ============================
+  // LOGIN
+  // ============================
+  if (form) {
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      feedback.textContent = '';
+      feedback.className = 'mt-3 text-center small';
+      erroUsuario.textContent = '';
+      erroSenha.textContent = '';
+
+      var login = (inpUsuario.value || '').trim();
+      var senha = (inpSenha.value || '').trim();
+
+      if (!login) {
+        erroUsuario.textContent = 'Informe seu usuário.';
+        return;
       }
-    }
+      if (!senha) {
+        erroSenha.textContent = 'Informe sua senha.';
+        return;
+      }
 
-    if (!achou) {
-      feedback.className = 'mt-3 text-danger small text-center';
-      feedback.textContent = 'Usuário ou senha incorretos!';
-      return;
-    }
+      // Desabilita botão enquanto autentica
+      const btn = form.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
 
-    localStorage.setItem('tipoUsuario', achou.tipo);
-    localStorage.setItem('usuarioLogado', achou.usuario);
+      try {
+        const result = await apiFetch('/Auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: login,
+            password: senha
+          })
+        });
 
-    feedback.className = 'mt-3 text-success small text-center';
-    feedback.textContent = 'Login bem-sucedido!';
+        // result => { token, username, role }
+        localStorage.setItem('authToken', result.token);
+        localStorage.setItem('usuarioLogado', result.username);
+        // Armazena exatamente a role vinda da API (Aluno, Professor, Administrador)
+        localStorage.setItem('tipoUsuario', result.role);
 
-    setTimeout(function () { window.location.href = 'dashboard.html'; }, 800);
-  });
+        feedback.className = 'mt-3 text-success small text-center';
+        feedback.textContent = 'Login bem-sucedido! Redirecionando...';
 
-  // === FORMULÁRIO DE MATRÍCULA (MODAL) ===
+        setTimeout(function () {
+          window.location.href = 'dashboard.html';
+        }, 800);
+      } catch (err) {
+        console.error(err);
+        feedback.className = 'mt-3 text-danger small text-center';
+        feedback.textContent = err.message || 'Usuário ou senha inválidos.';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  // ============================
+  // FORMULÁRIO DE MATRÍCULA (MODAL)
+  // ============================
   var formMatricula = document.getElementById('formMatricula');
   var fbMatricula = document.getElementById('fbMatricula');
 
   if (formMatricula) {
-    formMatricula.addEventListener('submit', function (e) {
+    formMatricula.addEventListener('submit', async function (e) {
       e.preventDefault();
 
       if (fbMatricula) {
@@ -87,7 +144,7 @@
         fbMatricula.className = 'small mt-1';
       }
 
-      var nome  = (document.getElementById('matNome').value || '').trim();
+      var nome = (document.getElementById('matNome').value || '').trim();
       var email = (document.getElementById('matEmail').value || '').trim();
       var dataNasc = document.getElementById('matDataNasc').value;
 
@@ -97,31 +154,40 @@
         return;
       }
 
-      // Salvar no localStorage (simulando envio)
+      const btnSubmit = formMatricula.querySelector('button[type="submit"]');
+      if (btnSubmit) btnSubmit.disabled = true;
+
       try {
-        var pendentes = JSON.parse(localStorage.getItem('solicitacoesMatricula') || '[]');
-        pendentes.push({
-          nome: nome,
-          email: email,
-          dataNasc: dataNasc,
-          criadoEm: new Date().toISOString()
+        // Envio real para a API de matrículas
+        await apiFetch('/Matriculas/solicitar', {
+          method: 'POST',
+          body: JSON.stringify({
+            nome: nome,
+            email: email,
+            dataNascimento: dataNasc
+          })
         });
-        localStorage.setItem('solicitacoesMatricula', JSON.stringify(pendentes));
-      } catch {}
 
-      fbMatricula.textContent = 'Solicitação enviada com sucesso!';
-      fbMatricula.classList.add('text-success');
+        fbMatricula.textContent = 'Solicitação enviada com sucesso!';
+        fbMatricula.classList.add('text-success');
 
-      formMatricula.reset();
+        formMatricula.reset();
 
-      // Fechar modal após 1s (opcional)
-      setTimeout(function () {
-        var modalEl = document.getElementById('modalMatricula');
-        if (modalEl && window.bootstrap) {
-          var modal = bootstrap.Modal.getInstance(modalEl);
-          if (modal) modal.hide();
-        }
-      }, 1000);
+        // Fechar modal após 1s (opcional)
+        setTimeout(function () {
+          var modalEl = document.getElementById('modalMatricula');
+          if (modalEl && window.bootstrap) {
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+          }
+        }, 1000);
+      } catch (err) {
+        console.error(err);
+        fbMatricula.textContent = err.message || 'Erro ao enviar solicitação. Tente novamente.';
+        fbMatricula.classList.add('text-danger');
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+      }
     });
   }
 })();
