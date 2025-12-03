@@ -1,0 +1,24 @@
+# IGNORAR PASTAS DO BACKEND
+EduConnect.API/bin/
+EduConnect.API/obj/
+EduConnect.API/.vs/
+EduConnect.API/**/bin/
+EduConnect.API/**/obj/
+
+# VS Code / Visual Studio
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Arquivos temporários
+*.log
+*.db
+*.pdb
+
+# Pastas de publicação
+publish/
+publicado/
+
+# Config de DEV opcional
+EduConnect.API/appsettings.Development.json

@@ -47,7 +47,7 @@
   </nav>
 
   <main class="container py-4">
-    <!-- HOME (2 colunas) -->
+    <!-- HOME -->
     <section id="sec-home" class="sec">
       <div class="card p-3 shadow-sm mb-3">
         <h5 class="mb-1">Bem-vindo ao Portal EduConnect</h5>
@@ -68,14 +68,10 @@
             <button type="button" class="btn btn-outline-primary" id="btnTipoProfessor">Professor</button>
           </div>
         </div>
+
         <form id="formCadastro" class="vstack gap-2">
           <input class="form-control" id="cadNome"  placeholder="Nome completo" />
           <input class="form-control" id="cadEmail" placeholder="E-mail institucional" />
-          <div class="row g-2">
-            <div class="col-md-6">
-              <input class="form-control" id="cadDataNasc" type="date" placeholder="Data de nascimento" />
-            </div>
-          </div>
 
           <!-- ALUNO -->
           <div id="grupoCadastroAluno" class="vstack gap-2">
@@ -85,12 +81,47 @@
 
           <!-- PROFESSOR -->
           <div id="grupoCadastroProfessor" class="vstack gap-2 d-none">
-            <input class="form-control" id="cadDisc" placeholder="Disciplina" />
+            <select class="form-select" id="cadDisc">
+              <option value="">Selecione a disciplina</option>
+              <option>Matemática</option>
+              <option>Química</option>
+              <option>Física</option>
+              <option>Biologia</option>
+              <option>Geografia</option>
+              <option>História</option>
+              <option>Filosofia</option>
+              <option>Sociologia</option>
+              <option>Português</option>
+            </select>
           </div>
 
           <button class="btn btn-primary mt-2" type="submit">Salvar</button>
           <div id="fbCadastro" class="small mt-1"></div>
         </form>
+
+        <!-- NOVO BLOCO: MATRÍCULAS PENDENTES DENTRO DO CADASTRO -->
+        <hr class="my-4">
+
+        <div id="blocoMatriculasPendentes" class="mt-2">
+          <h6 class="mb-1">Matrículas pendentes</h6>
+          <p class="small text-body-secondary mb-2">
+            Solicitações enviadas pelo formulário "Matricule-se já" e ainda não processadas.
+          </p>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>E-mail</th>
+                  <th>Data de nascimento</th>
+                  <th>Data da solicitação</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyMatriculasPendentesCadastro"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -100,13 +131,11 @@
         <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
           <h5 class="m-0">Lista</h5>
 
-          <!-- Busca por nome -->
           <div class="d-flex align-items-center gap-2 ms-3">
             <label class="small text-body-secondary">Nome:</label>
             <input id="buscaNome" class="form-control form-control-sm" style="min-width:200px;" placeholder="Buscar por nome" />
           </div>
 
-          <!-- Filtro turmas (alunos) -->
           <div id="filtroTurmaWrap" class="ms-auto d-flex align-items-center gap-2">
             <label class="small text-body-secondary">Turma:</label>
             <select id="selTurma" class="form-select form-select-sm" style="min-width:180px;">
@@ -114,7 +143,6 @@
             </select>
           </div>
 
-          <!-- Filtro disciplinas (professores) -->
           <div id="filtroDiscWrap" class="ms-auto d-flex align-items-center gap-2 d-none">
             <label class="small text-body-secondary">Disciplina:</label>
             <select id="selDisciplina" class="form-select form-select-sm" style="min-width:220px;">
@@ -173,6 +201,12 @@
             <h5 class="m-0" id="tituloGraficos">Gráficos de Desempenho</h5>
             <p class="small text-body-secondary mb-0" id="subtituloGraficos"></p>
           </div>
+          <div class="d-flex align-items-center gap-2" id="wrapFiltroTurmaGraficos">
+            <label class="small text-body-secondary mb-0">Turma:</label>
+            <select id="selTurmaGraficos" class="form-select form-select-sm" style="min-width:180px;">
+              <option value="__todas__">Todas</option>
+            </select>
+          </div>
         </div>
         <canvas id="chartNotas" height="120"></canvas>
         <div id="grafMsg" class="small text-body-secondary mt-2"></div>
@@ -189,13 +223,6 @@
           </div>
         </div>
         <div id="calendario" class="mt-3"></div>
-
-        <hr class="mt-4" />
-        <h6 class="mb-2">Eventos cadastrados</h6>
-        <ul id="listaEventos" class="list-group small"></ul>
-        <div id="listaEventosVazia" class="small text-body-secondary mt-2 d-none">
-          Nenhum evento cadastrado.
-        </div>
       </div>
     </section>
 
@@ -228,7 +255,7 @@
         </div>
         <div class="small text-body-secondary">
           Professores só podem lançar/remover notas da própria disciplina.  
-          Clique no “×” de uma nota para remover. As mudanças são salvas automaticamente.
+          As mudanças são salvas diretamente no backend.
         </div>
       </div>
     </section>
@@ -244,88 +271,150 @@
     </section>
   </main>
 
-  <!-- MODAL EDIÇÃO -->
-  <div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <form class="modal-content" id="formModalEditar">
-        <div class="modal-header">
-          <h5 class="modal-title" id="modalTitulo">Editar</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" id="modalTipo" />
-          <input type="hidden" id="modalIndex" />
-
-          <div class="vstack gap-2" id="grupoAluno">
-            <input class="form-control" id="mAlunoNome"   placeholder="Nome completo" />
-            <input class="form-control" id="mAlunoEmail"  placeholder="E-mail institucional" />
-            <input class="form-control" id="mAlunoRA"     placeholder="RA" />
-            <input class="form-control" id="mAlunoTurma"  placeholder="Turma (ex.: 3ºB)" />
-            <input class="form-control" id="mAlunoNasc"   type="date" placeholder="Data de nascimento" />
-          </div>
-
-          <div class="vstack gap-2 d-none" id="grupoProfessor">
-            <input class="form-control" id="mProfNome"  placeholder="Nome completo" />
-            <input class="form-control" id="mProfEmail" placeholder="E-mail institucional" />
-            <input class="form-control" id="mProfDisc"  placeholder="Disciplina" />
-            <input class="form-control" id="mProfNasc"  type="date" placeholder="Data de nascimento" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-primary" type="submit" id="btnSalvarEdicao">Salvar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL DETALHES -->
-  <div class="modal fade" id="modalDetalhes" tabindex="-1" aria-hidden="true">
+  <!-- MODAL: troca de senha no primeiro acesso -->
+  <div class="modal fade" id="modalTrocaSenha" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Detalhes</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          <h5 class="modal-title">Defina uma nova senha</h5>
         </div>
         <div class="modal-body">
-          <div id="detalhesConteudo" class="small"></div>
+          <p class="small text-body-secondary">
+            Este é seu primeiro acesso. Por segurança, defina uma nova senha pessoal.
+          </p>
+          <div class="mb-2">
+            <label class="form-label small">Nova senha</label>
+            <input type="password" class="form-control" id="novaSenha" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Confirmar nova senha</label>
+            <input type="password" class="form-control" id="confirmaNovaSenha" />
+          </div>
+          <div id="fbTrocaSenha" class="small mt-1"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Fechar</button>
+          <button type="button" id="btnSalvarNovaSenha" class="btn btn-primary">
+            Salvar nova senha
+          </button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- MODAL EVENTO -->
+  <!-- MODAL: Detalhes (aluno/professor) -->
+  <div class="modal fade" id="modalDetalhes" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalDetalhesTitulo">Detalhes</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="modalDetalhesConteudo" class="small"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Editar aluno/professor -->
+  <div class="modal fade" id="modalEditarPessoa" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalEditarPessoaTitulo">Editar</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="edicaoPessoaId" />
+          <div class="mb-2">
+            <label class="form-label small" for="edicaoNome">Nome</label>
+            <input type="text" id="edicaoNome" class="form-control form-control-sm" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" for="edicaoEmail">E-mail</label>
+            <input type="email" id="edicaoEmail" class="form-control form-control-sm" />
+          </div>
+
+          <div id="grupoEdicaoAluno" class="vstack gap-2">
+            <div>
+              <label class="form-label small" for="edicaoRA">RA</label>
+              <input type="text" id="edicaoRA" class="form-control form-control-sm" />
+            </div>
+            <div>
+              <label class="form-label small" for="edicaoTurma">Turma</label>
+              <input type="text" id="edicaoTurma" class="form-control form-control-sm" />
+            </div>
+          </div>
+
+          <div id="grupoEdicaoProfessor" class="vstack gap-2 d-none">
+            <div>
+              <label class="form-label small" for="edicaoDisciplina">Disciplina</label>
+              <input type="text" id="edicaoDisciplina" class="form-control form-control-sm" />
+            </div>
+          </div>
+
+          <div id="fbEdicaoPessoa" class="small mt-2"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="btnSalvarEdicaoPessoa" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Confirmação genérica (exclusão) -->
+  <div class="modal fade" id="modalConfirmacao" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalConfirmacaoTitulo">Confirmar ação</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p id="modalConfirmacaoMensagem" class="mb-0"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="btnConfirmarExclusao" class="btn btn-danger">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Evento (criar/editar/excluir) -->
   <div class="modal fade" id="modalEvento" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-      <form class="modal-content" id="formEvento">
+      <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Adicionar evento</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
-        <div class="modal-body vstack gap-3">
-          <div>
-            <label class="form-label">Título do evento</label>
-            <input id="evtTitulo" type="text" class="form-control" required />
+        <div class="modal-body">
+          <input type="hidden" id="eventoId" />
+          <div class="mb-2">
+            <label class="form-label small" for="eventoTitulo">Título</label>
+            <input type="text" id="eventoTitulo" class="form-control form-control-sm" />
           </div>
-          <div class="row">
-            <div class="col-md-6">
-              <label class="form-label">Data inicial</label>
-              <input id="evtInicio" type="date" class="form-control" required />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Data final (opcional)</label>
-              <input id="evtFim" type="date" class="form-control" />
-            </div>
+          <div class="mb-2">
+            <label class="form-label small" for="eventoDataInicio">Data de início</label>
+            <input type="date" id="eventoDataInicio" class="form-control form-control-sm" />
           </div>
+          <div class="mb-2">
+            <label class="form-label small" for="eventoDataFim">Data de término (opcional)</label>
+            <input type="date" id="eventoDataFim" class="form-control form-control-sm" />
+          </div>
+          <div id="fbEvento" class="small mt-1"></div>
         </div>
         <div class="modal-footer">
+          <button type="button" class="btn btn-outline-danger d-none" id="btnExcluirEvento">Excluir</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-primary" id="btnSalvarEvento">Salvar</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
