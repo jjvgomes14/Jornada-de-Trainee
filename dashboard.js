@@ -1,28 +1,24 @@
+// dashboard.js
 (function () {
   'use strict';
 
-  // ============================
-  // CONFIGURAÇÃO DA API
-  // ============================
-  const API_BASE_URL = 'http://localhost:5191/api'; // <-- AJUSTE AQUI PARA A SUA API
+  const API_BASE_URL = 'http://localhost:5191/api';
 
-  var token = localStorage.getItem('authToken');
+  let token = localStorage.getItem('authToken');
   if (!token) {
-    // Se não tiver token, volta pro login
     window.location.href = 'index.html';
     return;
   }
 
+  const mustChangePassword = localStorage.getItem('mustChangePassword') === '1';
+
   async function apiFetch(path, options) {
     const url = API_BASE_URL + path;
     options = options || {};
-
     const headers = Object.assign(
       {},
       options.headers || {},
-      {
-        Authorization: 'Bearer ' + token
-      }
+      { Authorization: 'Bearer ' + token }
     );
 
     if (!(options.body instanceof FormData) && !headers['Content-Type']) {
@@ -31,52 +27,51 @@
 
     const resp = await fetch(url, {
       method: options.method || 'GET',
-      headers: headers,
+      headers,
       body: options.body
     });
 
     if (resp.status === 204) return null;
 
     let data = null;
-    try {
-      data = await resp.json();
-    } catch {
-      data = null;
-    }
+    try { data = await resp.json(); } catch {}
 
     if (!resp.ok) {
       const msg = (data && (data.message || data.error)) || 'Erro ao comunicar com o servidor.';
       throw new Error(msg);
     }
-
     return data;
   }
 
-  // ============================
-  // DADOS BÁSICOS DO USUÁRIO
-  // ============================
-  var usuario = localStorage.getItem('usuarioLogado') || '';
-  var tipoRaw = localStorage.getItem('tipoUsuario') || '';
+  // ================== DADOS EM MEMÓRIA ==================
+  let alunos = [];
+  let professores = [];
+  let notasProfessor = [];
+  let turmas = [];
+  let matriculasPendentes = [];
 
-  // No back, Role vem como "Aluno", "Professor" ou "Administrador".
-  var tipoLower = tipoRaw.toLowerCase();
-  var isAdmin = (tipoLower === 'administrador');
-  var isProfessor = (tipoLower === 'professor');
-  var isAluno = (tipoLower === 'aluno' || (!isAdmin && !isProfessor));
+  // ================== INFO DO USUÁRIO ==================
+  const usuario = localStorage.getItem('usuarioLogado') || '';
+  const roleRaw = localStorage.getItem('tipoUsuario') || '';
+  const roleLower = roleRaw.toLowerCase();
 
-  var nomeUsuario = document.getElementById('nomeUsuario');
-  if (nomeUsuario) { nomeUsuario.textContent = usuario; }
+  const isAdmin = roleLower === 'administrador';
+  const isProfessor = roleLower === 'professor';
+  const isAluno = roleLower === 'aluno';
 
-  // === Tema Claro/Escuro ===
-  var body = document.body;
-  var switchTema = document.getElementById('switchTema');
-  var labelTema = document.getElementById('labelTema');
-  var tema = localStorage.getItem('tema') || 'light';
+  const nomeUsuario = document.getElementById('nomeUsuario');
+  if (nomeUsuario) nomeUsuario.textContent = usuario;
+
+  // ================== TEMA ==================
+  const body = document.body;
+  const switchTema = document.getElementById('switchTema');
+  const labelTema = document.getElementById('labelTema');
+  let tema = localStorage.getItem('tema') || 'light';
   aplicarTema(tema);
 
   if (switchTema) {
     switchTema.addEventListener('change', function () {
-      var novo = switchTema.checked ? 'dark' : 'light';
+      const novo = switchTema.checked ? 'dark' : 'light';
       aplicarTema(novo);
       localStorage.setItem('tema', novo);
     });
@@ -88,8 +83,8 @@
     if (switchTema) switchTema.checked = (nome === 'dark');
   }
 
-  // === Logout ===
-  var btnSair = document.getElementById('btnSair');
+  // ================== LOGOUT ==================
+  const btnSair = document.getElementById('btnSair');
   if (btnSair) {
     btnSair.addEventListener('click', function () {
       localStorage.removeItem('usuarioLogado');
@@ -99,218 +94,231 @@
     });
   }
 
-  // === Armazenamento Local (para cadastros locais + notificações) ===
-  var KEY_ALUNOS  = 'alunos';
-  var KEY_PROFS   = 'professores';
-  var KEY_EVENTOS = 'eventos'; // ainda usamos como cache local dos eventos
-  var KEY_NOTIFS  = 'notificacoes_eventos';
-  var KEY_VISTAS  = 'notifs_vistas_' + (usuario || 'aluno');
-
-  function lerJSON(chave) {
-    try { return JSON.parse(localStorage.getItem(chave) || '[]'); }
-    catch (e) { return []; }
-  }
-  function gravarJSON(chave, valor) {
-    localStorage.setItem(chave, JSON.stringify(valor));
+  // ================== MODAL TROCA DE SENHA (PRIMEIRO ACESSO) ==================
+  const modalTrocaSenhaEl = document.getElementById('modalTrocaSenha');
+  let modalTrocaSenha;
+  if (modalTrocaSenhaEl && window.bootstrap) {
+    modalTrocaSenha = new bootstrap.Modal(modalTrocaSenhaEl);
   }
 
-  var alunos = lerJSON(KEY_ALUNOS);
-  var professores = lerJSON(KEY_PROFS);
-  var eventosStore = lerJSON(KEY_EVENTOS);
+  if (mustChangePassword && modalTrocaSenha) {
+    setTimeout(() => {
+      modalTrocaSenha.show();
+    }, 500);
+  }
 
-  // === Helper notas normalizadas (por disciplina) ===
-  function normalizarNotasAluno(aluno) {
-    if (!aluno) return [];
-    var n = aluno.notas;
-    var res = [];
-    if (!Array.isArray(n)) {
-      aluno.notas = [];
-      return res;
-    }
-    for (var i = 0; i < n.length; i++) {
-      var item = n[i];
-      if (typeof item === 'number') {
-        res.push({ disciplina: 'Geral', valor: Number(item) });
-      } else if (item && typeof item === 'object') {
-        var disc = 'Geral';
-        var v;
+  const btnSalvarNovaSenha = document.getElementById('btnSalvarNovaSenha');
+  const fbTrocaSenha = document.getElementById('fbTrocaSenha');
 
-        // Formato do back-end: nota { valor, disciplina: { nome: ... } }
-        if (item.disciplina && typeof item.disciplina === 'object') {
-          disc = item.disciplina.nome || item.disciplina.Nome || 'Geral';
-          v = parseFloat(item.valor != null ? item.valor : item.Valor);
-        } else {
-          disc = item.disciplina || item.disc || 'Geral';
-          v = parseFloat(item.valor != null ? item.valor : item.Valor);
-        }
-
-        if (!isNaN(v)) res.push({ disciplina: disc, valor: v });
+  if (btnSalvarNovaSenha) {
+    btnSalvarNovaSenha.addEventListener('click', async () => {
+      if (fbTrocaSenha) {
+        fbTrocaSenha.textContent = '';
+        fbTrocaSenha.className = 'small mt-1';
       }
-    }
-    return res;
-  }
 
-  function notasDaDisciplina(aluno, disciplina) {
-    var todas = normalizarNotasAluno(aluno);
-    if (!disciplina) return todas.map(function (n) { return n.valor; });
-    var out = [];
-    for (var i = 0; i < todas.length; i++) {
-      if (todas[i].disciplina === disciplina) out.push(todas[i].valor);
-    }
-    return out;
-  }
+      const nova = (document.getElementById('novaSenha')?.value || '').trim();
+      const conf = (document.getElementById('confirmaNovaSenha')?.value || '').trim();
 
-  function media(arr) {
-    if (!arr || !arr.length) return null;
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) s += arr[i];
-    return s / arr.length;
-  }
-
-  // === Determinar "usuário de dados" (alunoAtual / professorAtual) ===
-  var alunoAtual = null;
-  var professorAtual = null;
-
-  if (isAluno && alunos.length) {
-    var ul = usuario.toLowerCase();
-    for (var iA = 0; iA < alunos.length; iA++) {
-      var a = alunos[iA];
-      var nomeA = (a.nome || '').toLowerCase();
-      var emailA = (a.email || '').toLowerCase();
-      var raA = (a.ra || '').toLowerCase();
-      if (nomeA.indexOf(ul) !== -1 || emailA.indexOf(ul) !== -1 || raA.indexOf(ul) !== -1) {
-        alunoAtual = a;
-        break;
+      if (!nova || nova.length < 6) {
+        fbTrocaSenha.textContent = 'A nova senha deve ter pelo menos 6 caracteres.';
+        fbTrocaSenha.classList.add('text-danger');
+        return;
       }
-    }
-    if (!alunoAtual) alunoAtual = alunos[0];
-  }
-
-  if (isProfessor && professores.length) {
-    var up = usuario.toLowerCase();
-    for (var iP = 0; iP < professores.length; iP++) {
-      var p0 = professores[iP];
-      var nomeP0 = (p0.nome || '').toLowerCase();
-      var emailP0 = (p0.email || '').toLowerCase();
-      if (nomeP0.indexOf(up) !== -1 || emailP0.indexOf(up) !== -1) {
-        professorAtual = p0;
-        break;
+      if (nova !== conf) {
+        fbTrocaSenha.textContent = 'As senhas não coincidem.';
+        fbTrocaSenha.classList.add('text-danger');
+        return;
       }
-    }
-    if (!professorAtual) professorAtual = professores[0];
+
+      try {
+        await apiFetch('/Auth/alterar-senha-primeiro-acesso', {
+          method: 'POST',
+          body: JSON.stringify({ novaSenha: nova })
+        });
+
+        fbTrocaSenha.textContent = 'Senha alterada com sucesso!';
+        fbTrocaSenha.classList.add('text-success');
+
+        localStorage.setItem('mustChangePassword', '0');
+
+        setTimeout(() => {
+          modalTrocaSenha.hide();
+        }, 800);
+      } catch (err) {
+        console.error(err);
+        fbTrocaSenha.textContent = err.message || 'Erro ao alterar senha.';
+        fbTrocaSenha.classList.add('text-danger');
+      }
+    });
   }
 
-  var disciplinaProfessorAtual = professorAtual ? (professorAtual.disc || professorAtual.disciplina || professorAtual.disciplinaNome || '') : '';
+  // ================== MODAIS GERAIS (LISTAGEM + CALENDÁRIO) ==================
+  const modalDetalhesEl = document.getElementById('modalDetalhes');
+  const modalEditarPessoaEl = document.getElementById('modalEditarPessoa');
+  const modalConfirmacaoEl = document.getElementById('modalConfirmacao');
+  const modalEventoEl = document.getElementById('modalEvento');
 
-  // === Ocultar seções conforme perfil ===
-  function esconderSecoesPorPerfil() {
-    var ocultar = [];
+  let modalDetalhes;
+  let modalEditarPessoa;
+  let modalConfirmacao;
+  let modalEvento;
+
+  if (window.bootstrap) {
+    if (modalDetalhesEl) modalDetalhes = new bootstrap.Modal(modalDetalhesEl);
+    if (modalEditarPessoaEl) modalEditarPessoa = new bootstrap.Modal(modalEditarPessoaEl);
+    if (modalConfirmacaoEl) modalConfirmacao = new bootstrap.Modal(modalConfirmacaoEl);
+    if (modalEventoEl) modalEvento = new bootstrap.Modal(modalEventoEl);
+  }
+
+  const modalDetalhesTitulo = document.getElementById('modalDetalhesTitulo');
+  const modalDetalhesConteudo = document.getElementById('modalDetalhesConteudo');
+
+  const modalEditarPessoaTitulo = document.getElementById('modalEditarPessoaTitulo');
+  const edicaoPessoaIdInput = document.getElementById('edicaoPessoaId');
+  const edicaoNomeInput = document.getElementById('edicaoNome');
+  const edicaoEmailInput = document.getElementById('edicaoEmail');
+  const edicaoRAInput = document.getElementById('edicaoRA');
+  const edicaoTurmaInput = document.getElementById('edicaoTurma');
+  const edicaoDisciplinaInput = document.getElementById('edicaoDisciplina');
+  const grupoEdicaoAluno = document.getElementById('grupoEdicaoAluno');
+  const grupoEdicaoProfessor = document.getElementById('grupoEdicaoProfessor');
+  const fbEdicaoPessoa = document.getElementById('fbEdicaoPessoa');
+  const btnSalvarEdicaoPessoa = document.getElementById('btnSalvarEdicaoPessoa');
+
+  const modalConfirmacaoTitulo = document.getElementById('modalConfirmacaoTitulo');
+  const modalConfirmacaoMensagem = document.getElementById('modalConfirmacaoMensagem');
+  const btnConfirmarExclusao = document.getElementById('btnConfirmarExclusao');
+
+  const eventoIdInput = document.getElementById('eventoId');
+  const eventoTituloInput = document.getElementById('eventoTitulo');
+  const eventoDataInicioInput = document.getElementById('eventoDataInicio');
+  const eventoDataFimInput = document.getElementById('eventoDataFim');
+  const fbEvento = document.getElementById('fbEvento');
+  const btnSalvarEvento = document.getElementById('btnSalvarEvento');
+  const btnExcluirEvento = document.getElementById('btnExcluirEvento');
+
+  let tipoEdicaoPessoa = null;
+  let confirmacaoContexto = null;
+  let eventoSelecionado = null;
+
+  // ================== PERMISSÕES DE SEÇÕES ==================
+  function configurarVisibilidadeSecoes() {
+    const esconder = [];
     if (isAdmin) {
-      ocultar = ['sec-graficos','sec-calendario','sec-notificacoes','sec-notas'];
+      esconder.push('sec-calendario', 'sec-notificacoes', 'sec-notas');
     } else if (isProfessor) {
-      ocultar = ['sec-cadastro','sec-notificacoes'];
+      esconder.push(
+        'sec-cadastro',
+        'sec-notificacoes'
+      );
     } else {
-      ocultar = ['sec-cadastro','sec-notas'];
+      esconder.push('sec-cadastro', 'sec-notas');
     }
 
-    for (var i = 0; i < ocultar.length; i++) {
-      var id = ocultar[i];
-      var link = document.querySelector('#menu .nav-link[data-section="' + id + '"]');
+    esconder.forEach(id => {
+      const link = document.querySelector(`#menu .nav-link[data-section="${id}"]`);
       if (link && link.parentElement) link.parentElement.style.display = 'none';
-      var sec = document.getElementById(id);
+      const sec = document.getElementById(id);
       if (sec) sec.classList.add('d-none');
-    }
+    });
 
-    var ativo = document.querySelector('#menu .nav-link.active');
-    if (ativo && ocultar.indexOf(ativo.getAttribute('data-section')) !== -1) {
+    const ativo = document.querySelector('#menu .nav-link.active');
+    if (ativo && esconder.includes(ativo.getAttribute('data-section'))) {
       ativo.classList.remove('active');
-      var fallback = document.querySelector('#menu .nav-link[data-section="sec-home"]');
-      if (fallback) {
-        fallback.classList.add('active');
-        var secs = document.querySelectorAll('.sec');
-        for (var j = 0; j < secs.length; j++) secs[j].classList.add('d-none');
-        var sh = document.getElementById('sec-home');
+      const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
+      if (homeLink) {
+        homeLink.classList.add('active');
+        document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
+        const sh = document.getElementById('sec-home');
         if (sh) sh.classList.remove('d-none');
       }
     }
+
+    const wrapFiltroTurmaGraficos = document.getElementById('wrapFiltroTurmaGraficos');
+    if (wrapFiltroTurmaGraficos) {
+      wrapFiltroTurmaGraficos.classList.toggle('d-none', !isAdmin);
+    }
+
+    const blocoMatriculas = document.getElementById('blocoMatriculasPendentes');
+    if (blocoMatriculas) {
+      blocoMatriculas.classList.toggle('d-none', !isAdmin);
+    }
   }
 
-  // === Home dinâmica (2 colunas) ===
+  configurarVisibilidadeSecoes();
+
+  // ================== HOME ==================
   function montarHome() {
-    var container = document.getElementById('homeCards');
+    const container = document.getElementById('homeCards');
     if (!container) return;
     container.innerHTML = '';
 
-    var descricoes = {
+    const descricoes = {
       'sec-listagem': 'Veja a listagem de alunos e professores cadastrados.',
       'sec-cadastro': 'Cadastre novos alunos e professores no sistema.',
       'sec-graficos': isAluno
-        ? 'Veja suas notas por disciplina.'
-        : (isProfessor ? 'Veja médias das turmas na sua disciplina.' : 'Visualize desempenho geral.'),
+        ? 'Veja seus gráficos de desempenho (em breve).'
+        : (isProfessor ? 'Veja médias por turma da sua disciplina.' : 'Visualize o desempenho das turmas.'),
       'sec-calendario': 'Consulte o calendário escolar e eventos.',
       'sec-notas': 'Lance e gerencie as notas dos alunos.',
-      'sec-notificacoes': 'Veja notificações sobre atualizações de eventos.'
+      'sec-notificacoes': 'Veja notificações de eventos (opcional).'
     };
 
-    var linksMenu = document.querySelectorAll('#menu .nav-link');
-    for (var i = 0; i < linksMenu.length; i++) {
-      var link = linksMenu[i];
-      var secId = link.getAttribute('data-section');
-      if (secId === 'sec-home') continue;
-      if (link.parentElement && link.parentElement.style.display === 'none') continue;
-      var titulo = (link.textContent || '').replace(/\s+/g, ' ').trim();
+    document.querySelectorAll('#menu .nav-link').forEach(link => {
+      const secId = link.getAttribute('data-section');
+      if (secId === 'sec-home') return;
+      if (link.parentElement && link.parentElement.style.display === 'none') return;
 
-      var col = document.createElement('div');
-      // 2 colunas em telas grandes
+      const titulo = (link.textContent || '').trim();
+      const col = document.createElement('div');
       col.className = 'col-12 col-md-6';
-      col.innerHTML =
-        '<div class="card h-100 shadow-sm">' +
-          '<div class="card-body d-flex flex-column">' +
-            '<h6 class="card-title mb-1">' + titulo + '</h6>' +
-            '<p class="card-text small text-body-secondary mb-3">' +
-              (descricoes[secId] || ('Acesse a seção "' + titulo + '".')) +
-            '</p>' +
-            '<button type="button" class="btn btn-sm btn-primary mt-auto" data-go-section="' + secId + '">Abrir</button>' +
-          '</div>' +
-        '</div>';
+      col.innerHTML = `
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h6 class="card-title mb-1">${titulo}</h6>
+            <p class="card-text small text-body-secondary mb-3">
+              ${descricoes[secId] || `Acesse a seção "${titulo}".`}
+            </p>
+            <button type="button" class="btn btn-sm btn-primary mt-auto" data-go-section="${secId}">Abrir</button>
+          </div>
+        </div>`;
       container.appendChild(col);
-    }
+    });
 
-    container.onclick = function (e) {
-      var btn = e.target && e.target.closest ? e.target.closest('button[data-go-section]') : null;
+    container.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-go-section]');
       if (!btn) return;
-      var alvo = btn.getAttribute('data-go-section');
-      var menuLink = document.querySelector('#menu .nav-link[data-section="' + alvo + '"]');
-      if (menuLink) {
-        menuLink.click();
-        var homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
+      const alvo = btn.getAttribute('data-go-section');
+      const link = document.querySelector(`#menu .nav-link[data-section="${alvo}"]`);
+      if (link) {
+        link.click();
+        const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
         if (homeLink) homeLink.classList.remove('active');
       }
-    };
+    });
   }
 
-  esconderSecoesPorPerfil();
   montarHome();
 
-  // === Navegação entre seções ===
-  var links = document.querySelectorAll('#menu .nav-link');
-  var calendar;
-  var calendarRendered = false;
+  // ================== NAVEGAÇÃO ==================
+  const linksMenu = document.querySelectorAll('#menu .nav-link');
+  let calendar;
+  let calendarRendered = false;
 
-  for (var k = 0; k < links.length; k++) {
-    links[k].addEventListener('click', function (e) {
+  linksMenu.forEach(link => {
+    link.addEventListener('click', e => {
       e.preventDefault();
-      for (var a = 0; a < links.length; a++) links[a].classList.remove('active');
-      this.classList.add('active');
+      linksMenu.forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
 
-      var alvo = this.getAttribute('data-section');
-      var secs = document.querySelectorAll('.sec');
-      for (var b = 0; b < secs.length; b++) secs[b].classList.add('d-none');
-      var open = document.getElementById(alvo);
-      if (open) open.classList.remove('d-none');
+      const alvo = link.getAttribute('data-section');
+      document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
+      const sec = document.getElementById(alvo);
+      if (sec) sec.classList.remove('d-none');
 
       if (alvo === 'sec-calendario' && calendar) {
-        setTimeout(function () {
+        setTimeout(() => {
           if (!calendarRendered) {
             calendar.render();
             calendarRendered = true;
@@ -323,170 +331,49 @@
       if (alvo === 'sec-graficos') {
         atualizarGraficos();
       }
-    });
-  }
-
-  // Garantir que Home seja a primeira
-  var homeLinkInit = document.querySelector('#menu .nav-link[data-section="sec-home"]');
-  if (homeLinkInit) {
-    var secsInit = document.querySelectorAll('.sec');
-    for (var si = 0; si < secsInit.length; si++) secsInit[si].classList.add('d-none');
-    var homeSec = document.getElementById('sec-home');
-    if (homeSec) homeSec.classList.remove('d-none');
-    for (var li = 0; li < links.length; li++) links[li].classList.remove('active');
-    homeLinkInit.classList.add('active');
-  }
-
-  // === Calendário + lista de eventos ===
-  var listaEventos = document.getElementById('listaEventos');
-  var listaEventosVazia = document.getElementById('listaEventosVazia');
-
-  function formatarDataIso(iso) {
-    if (!iso) return '';
-    var s = String(iso).slice(0, 10);
-    var partes = s.split('-');
-    if (partes.length === 3) {
-      return partes[2] + '/' + partes[1] + '/' + partes[0];
-    }
-    return s;
-  }
-
-  function atualizarListaEventos() {
-    if (!listaEventos || !listaEventosVazia) return;
-    var eventos = eventosStore || [];
-    listaEventos.innerHTML = '';
-    if (!eventos.length) {
-      listaEventosVazia.classList.remove('d-none');
-      return;
-    }
-    listaEventosVazia.classList.add('d-none');
-
-    eventos.sort(function(a, b){
-      var da = a.start || '';
-      var db = b.start || '';
-      if (da < db) return -1;
-      if (da > db) return 1;
-      return 0;
-    });
-
-    for (var i = 0; i < eventos.length; i++) {
-      var ev = eventos[i];
-      var li = document.createElement('li');
-      li.className = 'list-group-item d-flex flex-column';
-      var inicioFmt = formatarDataIso(ev.start);
-      var fimFmt = formatarDataIso(ev.end);
-      var datasTxt = inicioFmt;
-      if (inicioFmt && fimFmt && fimFmt !== inicioFmt) {
-        datasTxt = inicioFmt + ' até ' + fimFmt;
+      if (alvo === 'sec-notas') {
+        atualizarNotas();
       }
-      li.innerHTML =
-        '<strong>' + (ev.title || 'Evento') + '</strong>' +
-        (datasTxt ? '<span class="text-body-secondary">Data: ' + datasTxt + '</span>' : '');
-      listaEventos.appendChild(li);
-    }
-  }
-
-  atualizarListaEventos();
-
-  // === Notificações simples ===
-  var listaNotificacoes = document.getElementById('listaNotificacoes');
-
-  function salvarNotificacao(ev, tipo) {
-    var notifs = lerJSON(KEY_NOTIFS);
-    notifs.push({
-      id: 'ntf-' + Date.now(),
-      eventoId: ev.id,
-      titulo: ev.title,
-      inicio: ev.startStr || (ev.start && ev.start.toISOString ? ev.start.toISOString().slice(0,10) : ''),
-      tipo: tipo || 'novo',
-      criadoEm: new Date().toISOString()
-    });
-    gravarJSON(KEY_NOTIFS, notifs);
-  }
-
-  function salvarNotificacaoAlteracao(ev, acao) {
-    salvarNotificacao(ev, acao);
-  }
-
-  function renderToast(msg) {
-    if (!listaNotificacoes) return;
-    var toast = document.createElement('div');
-    toast.className = 'toast align-items-center show border';
-    toast.setAttribute('role', 'alert');
-    toast.innerHTML =
-      '<div class="d-flex">' +
-        '<div class="toast-body">' + msg + '</div>' +
-        '<button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>' +
-      '</div>';
-    listaNotificacoes.prepend(toast);
-  }
-
-  function mostrarNotifsNovasAluno() {
-    if (!isAluno) return;
-    var notifs = lerJSON(KEY_NOTIFS);
-    var vistas = [];
-    try { vistas = JSON.parse(localStorage.getItem(KEY_VISTAS) || '[]'); }
-    catch(e) { vistas = []; }
-    var setVistas = {};
-    for (var i = 0; i < vistas.length; i++) setVistas[vistas[i]] = true;
-
-    var novas = [];
-    for (var j = 0; j < notifs.length; j++) {
-      if (!setVistas[notifs[j].id]) novas.push(notifs[j]);
-    }
-
-    var inicio = Math.max(0, novas.length - 10);
-    for (var u = inicio; u < novas.length; u++) {
-      var n = novas[u];
-      var dataTxt = n.inicio ? (' em ' + n.inicio) : '';
-      var msg;
-      switch (n.tipo) {
-        case 'novo':
-          msg = 'Novo evento: <b>' + n.titulo + '</b>' + dataTxt + '.';
-          break;
-        case 'editado':
-          msg = 'Evento editado: <b>' + n.titulo + '</b>' + dataTxt + '.';
-          break;
-        case 'movido':
-          msg = 'Evento movido: <b>' + n.titulo + '</b>' + dataTxt + '.';
-          break;
-        case 'datas_alteradas':
-          msg = 'Datas ajustadas: <b>' + n.titulo + '</b>' + dataTxt + '.';
-          break;
-        case 'excluido':
-          msg = 'Evento excluído: <b>' + n.titulo + '</b>.';
-          break;
-        default:
-          msg = 'Atualização no evento: <b>' + n.titulo + '</b>' + dataTxt + '.';
+      if (alvo === 'sec-cadastro') {
+        atualizarMatriculasPendentes();
       }
-      renderToast(msg);
-      vistas.push(n.id);
-    }
-    localStorage.setItem(KEY_VISTAS, JSON.stringify(vistas));
-  }
+    });
+  });
 
-  // === Cadastro (toggle aluno/professor) ===
-  var tipoCadastroAtual = 'aluno';
-  var btnTipoAluno = document.getElementById('btnTipoAluno');
-  var btnTipoProfessor = document.getElementById('btnTipoProfessor');
-  var tituloCadastro = document.getElementById('tituloCadastro');
-  var grupoCadastroAluno = document.getElementById('grupoCadastroAluno');
-  var grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
+  (function () {
+    const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
+    if (!homeLink) return;
+    document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
+    const home = document.getElementById('sec-home');
+    if (home) home.classList.remove('d-none');
+    linksMenu.forEach(l => l.classList.remove('active'));
+    homeLink.classList.add('active');
+  })();
+
+  // ================== CADASTRO ALUNO/PROFESSOR ==================
+  let tipoCadastroAtual = 'aluno';
+  const btnTipoAluno = document.getElementById('btnTipoAluno');
+  const btnTipoProfessor = document.getElementById('btnTipoProfessor');
+  const tituloCadastro = document.getElementById('tituloCadastro');
+  const grupoCadastroAluno = document.getElementById('grupoCadastroAluno');
+  const grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
 
   function atualizarTipoCadastro() {
     if (tituloCadastro) {
-      tituloCadastro.textContent = (tipoCadastroAtual === 'aluno') ? 'Cadastrar Aluno' : 'Cadastrar Professor';
+      tituloCadastro.textContent = tipoCadastroAtual === 'aluno'
+        ? 'Cadastrar Aluno'
+        : 'Cadastrar Professor';
     }
     if (btnTipoAluno && btnTipoProfessor) {
       if (tipoCadastroAtual === 'aluno') {
-        btnTipoAluno.classList.add('btn-primary','active');
+        btnTipoAluno.classList.add('btn-primary', 'active');
         btnTipoAluno.classList.remove('btn-outline-primary');
-        btnTipoProfessor.classList.remove('btn-primary','active');
+        btnTipoProfessor.classList.remove('btn-primary', 'active');
         btnTipoProfessor.classList.add('btn-outline-primary');
       } else {
-        btnTipoProfessor.classList.add('btn-primary','active');
+        btnTipoProfessor.classList.add('btn-primary', 'active');
         btnTipoProfessor.classList.remove('btn-outline-primary');
-        btnTipoAluno.classList.remove('btn-primary','active');
+        btnTipoAluno.classList.remove('btn-primary', 'active');
         btnTipoAluno.classList.add('btn-outline-primary');
       }
     }
@@ -495,20 +382,21 @@
   }
 
   if (btnTipoAluno) {
-    btnTipoAluno.addEventListener('click', function () {
+    btnTipoAluno.addEventListener('click', () => {
       tipoCadastroAtual = 'aluno';
       atualizarTipoCadastro();
     });
   }
   if (btnTipoProfessor) {
-    btnTipoProfessor.addEventListener('click', function () {
+    btnTipoProfessor.addEventListener('click', () => {
       tipoCadastroAtual = 'professor';
       atualizarTipoCadastro();
     });
   }
   atualizarTipoCadastro();
 
-  var formCadastro = document.getElementById('formCadastro');
+  const formCadastro = document.getElementById('formCadastro');
+  const fbCadastro = document.getElementById('fbCadastro');
 
   function setFb(el, msg, erro) {
     if (!el) return;
@@ -517,811 +405,980 @@
   }
 
   if (formCadastro) {
-    formCadastro.addEventListener('submit', function (e) {
+    formCadastro.addEventListener('submit', async e => {
       e.preventDefault();
-      var nome  = (document.getElementById('cadNome').value || '').trim();
-      var email = (document.getElementById('cadEmail').value || '').trim();
-      var nasc  = (document.getElementById('cadDataNasc').value || '').trim();
-      var fb = document.getElementById('fbCadastro');
+      const nome  = (document.getElementById('cadNome').value || '').trim();
+      const email = (document.getElementById('cadEmail').value || '').trim();
 
-      if (!nome || !email || !nasc) {
-        setFb(fb, 'Preencha todos os campos obrigatórios.', true);
+      if (!nome || !email) {
+        setFb(fbCadastro, 'Preencha nome e e-mail.', true);
         return;
       }
 
-      if (tipoCadastroAtual === 'aluno') {
-        var ra    = (document.getElementById('cadRA').value || '').trim();
-        var turma = (document.getElementById('cadTurma').value || '').trim();
-        if (!ra || !turma) {
-          setFb(fb, 'Preencha RA e Turma para o aluno.', true);
-          return;
+      try {
+        if (tipoCadastroAtual === 'aluno') {
+          const ra    = (document.getElementById('cadRA').value || '').trim();
+          const turma = (document.getElementById('cadTurma').value || '').trim();
+          if (!ra || !turma) {
+            setFb(fbCadastro, 'Preencha RA e Turma para o aluno.', true);
+            return;
+          }
+
+          const body = JSON.stringify({ nome, email, ra, turma });
+          const novo = await apiFetch('/Alunos', {
+            method: 'POST',
+            body
+          });
+          alunos.push(novo);
+          setFb(fbCadastro, 'Aluno cadastrado com sucesso!', false);
+        } else {
+          const disc = (document.getElementById('cadDisc').value || '').trim();
+          if (!disc) {
+            setFb(fbCadastro, 'Selecione a disciplina do professor.', true);
+            return;
+          }
+
+          const body = JSON.stringify({ nome, email, disciplina: disc });
+          const novo = await apiFetch('/Professores', {
+            method: 'POST',
+            body
+          });
+          professores.push(novo);
+          setFb(fbCadastro, 'Professor cadastrado! Um e-mail será enviado com a disciplina atribuída.', false);
         }
-        alunos.push({ nome: nome, email: email, ra: ra, turma: turma, nasc: nasc, notas: [] });
-        gravarJSON(KEY_ALUNOS, alunos);
-        setFb(fb, 'Aluno cadastrado!', false);
-      } else {
-        var disc = (document.getElementById('cadDisc').value || '').trim();
-        if (!disc) {
-          setFb(fb, 'Preencha a disciplina do professor.', true);
-          return;
-        }
-        professores.push({ nome: nome, email: email, nasc: nasc, disc: disc });
-        gravarJSON(KEY_PROFS, professores);
-        setFb(fb, 'Professor cadastrado!', false);
+
+        formCadastro.reset();
+        tipoCadastroAtual = 'aluno';
+        atualizarTipoCadastro();
+        atualizarFiltros();
+        atualizarListagens();
+        atualizarTurmasNotas();
+        atualizarGraficos();
+      } catch (err) {
+        console.error(err);
+        setFb(fbCadastro, err.message || 'Erro ao salvar cadastro.', true);
       }
-
-      formCadastro.reset();
-      document.getElementById('cadDataNasc').value = '';
-      atualizarFiltros();
-      atualizarSelTurmas(selTurmaNotas);
-      atualizarNotas();
-      atualizarGraficos();
-      renderListas();
     });
   }
 
-  // === Listagem: filtros + busca por nome ===
-  var selTurma = document.getElementById('selTurma');
-  var selDisc  = document.getElementById('selDisciplina');
-  var filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
-  var filtroDiscWrap  = document.getElementById('filtroDiscWrap');
-  var inpBuscaNome = document.getElementById('buscaNome');
+  // ================== LISTAGEM ==================
+  const selTurma = document.getElementById('selTurma');
+  const selDisciplina = document.getElementById('selDisciplina');
+  const filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
+  const filtroDiscWrap = document.getElementById('filtroDiscWrap');
+  const inpBuscaNome = document.getElementById('buscaNome');
+  const tbodyAlunos = document.getElementById('tbodyAlunos');
+  const tbodyProfessores = document.getElementById('tbodyProfessores');
 
-  if (selTurma) selTurma.addEventListener('change', renderListas);
-  if (selDisc)  selDisc.addEventListener('change', renderListas);
-  if (inpBuscaNome) {
-    inpBuscaNome.addEventListener('input', function () {
-      renderListas();
-    });
-  }
+  if (selTurma) selTurma.addEventListener('change', atualizarListagens);
+  if (selDisciplina) selDisciplina.addEventListener('change', atualizarListagens);
+  if (inpBuscaNome) inpBuscaNome.addEventListener('input', atualizarListagens);
 
-  var tabsListagem = document.querySelectorAll('#tabsListagem .nav-link');
-  for (var t = 0; t < tabsListagem.length; t++) {
-    tabsListagem[t].addEventListener('click', function () {
-      for (var q = 0; q < tabsListagem.length; q++) tabsListagem[q].classList.remove('active');
-      this.classList.add('active');
-      var panes = document.querySelectorAll('.tab-pane');
-      for (var w = 0; w < panes.length; w++) panes[w].classList.remove('show','active');
-      var pane = document.getElementById(this.getAttribute('data-target'));
-      if (pane) pane.classList.add('show','active');
+  const tabsListagem = document.querySelectorAll('#tabsListagem .nav-link');
+  tabsListagem.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabsListagem.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
 
-      var alunosAtivo = (this.getAttribute('data-target') === 'tab-alunos');
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show', 'active'));
+      const alvo = document.getElementById(tab.getAttribute('data-target'));
+      if (alvo) alvo.classList.add('show', 'active');
+
+      const alunosAtivo = tab.getAttribute('data-target') === 'tab-alunos';
       if (filtroTurmaWrap) filtroTurmaWrap.classList.toggle('d-none', !alunosAtivo);
       if (filtroDiscWrap) filtroDiscWrap.classList.toggle('d-none', alunosAtivo);
-      renderListas();
-    });
-  }
 
-  // mostrar coluna Ações se admin
+      atualizarListagens();
+    });
+  });
+
   if (isAdmin) {
-    var ths = document.querySelectorAll('.th-acoes');
-    for (var z = 0; z < ths.length; z++) ths[z].classList.remove('d-none');
+    document.querySelectorAll('.th-acoes').forEach(th => th.classList.remove('d-none'));
   }
 
   function atualizarFiltros() {
-    // Turmas
+    const setTurmas = new Set(alunos.map(a => (a.turma || '').trim()).filter(Boolean));
+    turmas = Array.from(setTurmas).sort();
+
     if (selTurma) {
-      var atual = selTurma.value || '__todas__';
-      var setTurmas = {};
-      for (var i = 0; i < alunos.length; i++) {
-        var t = (alunos[i].turma || '').trim();
-        if (t) setTurmas[t] = true;
-      }
-      var turmas = Object.keys(setTurmas).sort();
-      var opts = '<option value="__todas__">Todas</option>';
-      for (var j = 0; j < turmas.length; j++) opts += '<option>' + turmas[j] + '</option>';
+      const atual = selTurma.value || '__todas__';
+      let opts = '<option value="__todas__">Todas</option>';
+      turmas.forEach(t => opts += `<option>${t}</option>`);
       selTurma.innerHTML = opts;
       selTurma.value = atual;
     }
-    // Disciplinas
-    if (selDisc) {
-      var atualD = selDisc.value || '__todas__';
-      var setDisc = {};
-      for (var p1 = 0; p1 < professores.length; p1++) {
-        var d = (professores[p1].disc || '').trim();
-        if (d) setDisc[d] = true;
-      }
-      var discs = Object.keys(setDisc).sort();
-      var optsD = '<option value="__todas__">Todas</option>';
-      for (var r = 0; r < discs.length; r++) optsD += '<option>' + discs[r] + '</option>';
-      selDisc.innerHTML = optsD;
-      selDisc.value = atualD;
+
+    const setDisc = new Set(professores.map(p => (p.disciplina || p.disc || '').trim()).filter(Boolean));
+    const disciplinas = Array.from(setDisc).sort();
+
+    if (selDisciplina) {
+      const atual = selDisciplina.value || '__todas__';
+      let opts = '<option value="__todas__">Todas</option>';
+      disciplinas.forEach(d => opts += `<option>${d}</option>`);
+      selDisciplina.innerHTML = opts;
+      selDisciplina.value = atual;
+    }
+
+    const selTurmaGraficos = document.getElementById('selTurmaGraficos');
+    if (selTurmaGraficos) {
+      const atual = selTurmaGraficos.value || '__todas__';
+      let opts = '<option value="__todas__">Todas</option>';
+      turmas.forEach(t => opts += `<option>${t}</option>`);
+      selTurmaGraficos.innerHTML = opts;
+      selTurmaGraficos.value = atual;
     }
   }
 
-  function renderListas() {
-    var termo = inpBuscaNome ? (inpBuscaNome.value || '').toLowerCase().trim() : '';
+  function atualizarListagens() {
+    const termo = (inpBuscaNome && inpBuscaNome.value || '').toLowerCase().trim();
 
-    // Alunos
-    var tbA = document.getElementById('tbodyAlunos');
-    if (tbA) {
-      var filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
-      tbA.innerHTML = '';
-      for (var i = 0; i < alunos.length; i++) {
-        var a = alunos[i];
-        var nomeA = (a.nome || '');
-        if (termo && nomeA.toLowerCase().indexOf(termo) === -1) continue;
-        if (filtroT !== '__todas__' && (a.turma || '') !== filtroT) continue;
-        var tr = document.createElement('tr');
+    if (tbodyAlunos) {
+      const filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
+      tbodyAlunos.innerHTML = '';
+      alunos.forEach(a => {
+        if (termo && !(a.nome || '').toLowerCase().includes(termo)) return;
+        if (filtroT !== '__todas__' && (a.turma || '') !== filtroT) return;
 
-        var detalhesTd = '<td>' +
-          '<button class="btn btn-sm btn-outline-info btn-detalhes" data-tipo="aluno" data-idx="' + i + '">Detalhes</button>' +
-        '</td>';
-
-        var acaoTd = '';
+        const tr = document.createElement('tr');
+        const detalhes = `<button class="btn btn-sm btn-outline-info" data-acao="detalhes-aluno" data-id="${a.id}">Detalhes</button>`;
+        let acoes = '';
         if (isAdmin) {
-          acaoTd = '<td>' +
-            '<button class="btn btn-sm btn-outline-secondary me-1 btn-editar" data-tipo="aluno" data-idx="' + i + '">Editar</button>' +
-            '<button class="btn btn-sm btn-outline-danger btn-excluir" data-tipo="aluno" data-idx="' + i + '">Excluir</button>' +
-          '</td>';
+          acoes = `
+            <button class="btn btn-sm btn-outline-secondary me-1" data-acao="edit-aluno" data-id="${a.id}">Editar</button>
+            <button class="btn btn-sm btn-outline-danger" data-acao="del-aluno" data-id="${a.id}">Excluir</button>`;
         }
-
-        tr.innerHTML =
-          '<td>' + nomeA + '</td>' +
-          '<td>' + (a.email || '') + '</td>' +
-          '<td>' + (a.turma || '—') + '</td>' +
-          detalhesTd +
-          acaoTd;
-        tbA.appendChild(tr);
-      }
+        tr.innerHTML = `
+          <td>${a.nome}</td>
+          <td>${a.email}</td>
+          <td>${a.turma || '—'}</td>
+          <td>${detalhes}</td>
+          ${isAdmin ? `<td>${acoes}</td>` : ''}`;
+        tbodyAlunos.appendChild(tr);
+      });
     }
 
-    // Professores
-    var tbP = document.getElementById('tbodyProfessores');
-    if (tbP) {
-      var filtroD = selDisc ? (selDisc.value || '__todas__') : '__todas__';
-      tbP.innerHTML = '';
-      for (var j = 0; j < professores.length; j++) {
-        var p2 = professores[j];
-        var nomeP = (p2.nome || '');
-        if (termo && nomeP.toLowerCase().indexOf(termo) === -1) continue;
-        if (filtroD !== '__todas__' && (p2.disc || '') !== filtroD) continue;
+    if (tbodyProfessores) {
+      const filtroD = selDisciplina ? (selDisciplina.value || '__todas__') : '__todas__';
+      tbodyProfessores.innerHTML = '';
+      professores.forEach(p => {
+        const disc = p.disciplina || p.disc || '';
+        if (termo && !(p.nome || '').toLowerCase().includes(termo)) return;
+        if (filtroD !== '__todas__' && disc !== filtroD) return;
 
-        var detalhesTdP = '<td>' +
-          '<button class="btn btn-sm btn-outline-info btn-detalhes" data-tipo="professor" data-idx="' + j + '">Detalhes</button>' +
-        '</td>';
-
-        var acaoP = '';
+        const tr = document.createElement('tr');
+        const detalhes = `<button class="btn btn-sm btn-outline-info" data-acao="detalhes-prof" data-id="${p.id}">Detalhes</button>`;
+        let acoes = '';
         if (isAdmin) {
-          acaoP = '<td>' +
-            '<button class="btn btn-sm btn-outline-secondary me-1 btn-editar" data-tipo="professor" data-idx="' + j + '">Editar</button>' +
-            '<button class="btn btn-sm btn-outline-danger btn-excluir" data-tipo="professor" data-idx="' + j + '">Excluir</button>' +
-          '</td>';
+          acoes = `
+            <button class="btn btn-sm btn-outline-secondary me-1" data-acao="edit-prof" data-id="${p.id}">Editar</button>
+            <button class="btn btn-sm btn-outline-danger" data-acao="del-prof" data-id="${p.id}">Excluir</button>`;
         }
-
-        var trp = document.createElement('tr');
-        trp.innerHTML =
-          '<td>' + nomeP + '</td>' +
-          '<td>' + (p2.email || '') + '</td>' +
-          '<td>' + (p2.disc || '—') + '</td>' +
-          detalhesTdP +
-          acaoP;
-        tbP.appendChild(trp);
-      }
+        tr.innerHTML = `
+          <td>${p.nome}</td>
+          <td>${p.email}</td>
+          <td>${disc || '—'}</td>
+          <td>${detalhes}</td>
+          ${isAdmin ? `<td>${acoes}</td>` : ''}`;
+        tbodyProfessores.appendChild(tr);
+      });
     }
   }
 
-  // === Modal Detalhes + Editar/Excluir ===
-  var secListagem = document.getElementById('sec-listagem');
-  var modalEditarEl = document.getElementById('modalEditar');
-  var formModal = document.getElementById('formModalEditar');
-  var modalEditar;
-  var modalDetalhesEl = document.getElementById('modalDetalhes');
-  var detalhesConteudo = document.getElementById('detalhesConteudo');
-  var modalDetalhes;
+  // ========= Handlers da listagem (detalhes/editar/excluir) =========
+  function abrirModalDetalhesPessoa(tipo, pessoa) {
+    if (!modalDetalhes || !modalDetalhesTitulo || !modalDetalhesConteudo) return;
 
-  if (secListagem) {
-    secListagem.addEventListener('click', function (e) {
-      var btn = e.target.closest ? e.target.closest('button') : e.target;
-      if (!btn || !btn.getAttribute) return;
-
-      var isEditar = btn.classList.contains('btn-editar');
-      var isExcluir = btn.classList.contains('btn-excluir');
-      var isDetalhes = btn.classList.contains('btn-detalhes');
-
-      if (isDetalhes) {
-        var tipoD = btn.getAttribute('data-tipo');
-        var idxD = parseInt(btn.getAttribute('data-idx'), 10);
-        abrirModalDetalhes(tipoD, idxD);
-        return;
-      }
-
-      if (!isAdmin && (isEditar || isExcluir)) return;
-
-      if (isExcluir) {
-        var tipoX = btn.getAttribute('data-tipo');
-        var idx = parseInt(btn.getAttribute('data-idx'), 10);
-        var nomeEnt = (tipoX === 'aluno')
-          ? (alunos[idx] && alunos[idx].nome)
-          : (professores[idx] && professores[idx].nome);
-        if (confirm('Excluir ' + tipoX + ' "' + nomeEnt + '"?')) {
-          if (tipoX === 'aluno') {
-            alunos.splice(idx,1);
-            gravarJSON(KEY_ALUNOS, alunos);
-          } else {
-            professores.splice(idx,1);
-            gravarJSON(KEY_PROFS, professores);
-          }
-          atualizarFiltros();
-          atualizarSelTurmas(selTurmaNotas);
-          atualizarNotas();
-          atualizarGraficos();
-          renderListas();
-        }
-        return;
-      }
-
-      if (isEditar) {
-        abrirModalEditar(btn.getAttribute('data-tipo'), parseInt(btn.getAttribute('data-idx'),10));
-      }
-    });
-  }
-
-  function abrirModalDetalhes(tipoD, idxD) {
-    if (!detalhesConteudo) return;
-    var html = '';
-    if (tipoD === 'aluno') {
-      var a = alunos[idxD] || {};
-      html =
-        '<p><strong>Nome:</strong> ' + (a.nome || '') + '</p>' +
-        '<p><strong>E-mail:</strong> ' + (a.email || '') + '</p>' +
-        '<p><strong>RA:</strong> ' + (a.ra || '—') + '</p>' +
-        '<p><strong>Turma:</strong> ' + (a.turma || '—') + '</p>' +
-        '<p><strong>Data de nascimento:</strong> ' + (a.nasc || '—') + '</p>';
+    if (tipo === 'aluno') {
+      modalDetalhesTitulo.textContent = 'Detalhes do aluno';
+      modalDetalhesConteudo.innerHTML = `
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Nome</dt><dd class="col-sm-9">${pessoa.nome}</dd>
+          <dt class="col-sm-3">E-mail</dt><dd class="col-sm-9">${pessoa.email}</dd>
+          <dt class="col-sm-3">RA</dt><dd class="col-sm-9">${pessoa.ra || '—'}</dd>
+          <dt class="col-sm-3">Turma</dt><dd class="col-sm-9">${pessoa.turma || '—'}</dd>
+        </dl>`;
     } else {
-      var p = professores[idxD] || {};
-      html =
-        '<p><strong>Nome:</strong> ' + (p.nome || '') + '</p>' +
-        '<p><strong>E-mail:</strong> ' + (p.email || '') + '</p>' +
-        '<p><strong>Disciplina:</strong> ' + (p.disc || '—') + '</p>' +
-        '<p><strong>Data de nascimento:</strong> ' + (p.nasc || '—') + '</p>';
+      const disc = pessoa.disciplina || pessoa.disc || '—';
+      modalDetalhesTitulo.textContent = 'Detalhes do professor';
+      modalDetalhesConteudo.innerHTML = `
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Nome</dt><dd class="col-sm-9">${pessoa.nome}</dd>
+          <dt class="col-sm-3">E-mail</dt><dd class="col-sm-9">${pessoa.email}</dd>
+          <dt class="col-sm-3">Disciplina</dt><dd class="col-sm-9">${disc}</dd>
+        </dl>`;
     }
-    detalhesConteudo.innerHTML = html;
 
-    if (!modalDetalhes) modalDetalhes = new bootstrap.Modal(modalDetalhesEl);
     modalDetalhes.show();
   }
 
-  function abrirModalEditar(tipoX, idx) {
-    document.getElementById('modalTipo').value = tipoX;
-    document.getElementById('modalIndex').value = String(idx);
-    var titulo = document.getElementById('modalTitulo');
-    var grupoAluno = document.getElementById('grupoAluno');
-    var grupoProfessor = document.getElementById('grupoProfessor');
+  function abrirModalEditarPessoa(tipo, pessoa) {
+    if (!modalEditarPessoa || !edicaoPessoaIdInput || !edicaoNomeInput || !edicaoEmailInput) return;
+    tipoEdicaoPessoa = tipo;
 
-    if (tipoX === 'aluno') {
-      titulo.textContent = 'Editar Aluno';
-      grupoAluno.classList.remove('d-none');
-      grupoProfessor.classList.add('d-none');
-      var a = alunos[idx] || {};
-      document.getElementById('mAlunoNome').value  = a.nome  || '';
-      document.getElementById('mAlunoEmail').value = a.email || '';
-      document.getElementById('mAlunoRA').value    = a.ra    || '';
-      document.getElementById('mAlunoTurma').value = a.turma || '';
-      document.getElementById('mAlunoNasc').value  = a.nasc  || '';
-    } else {
-      titulo.textContent = 'Editar Professor';
-      grupoProfessor.classList.remove('d-none');
-      grupoAluno.classList.add('d-none');
-      var p = professores[idx] || {};
-      document.getElementById('mProfNome').value  = p.nome  || '';
-      document.getElementById('mProfEmail').value = p.email || '';
-      document.getElementById('mProfDisc').value  = p.disc  || '';
-      document.getElementById('mProfNasc').value  = p.nasc  || '';
+    if (fbEdicaoPessoa) {
+      fbEdicaoPessoa.textContent = '';
+      fbEdicaoPessoa.className = 'small mt-2';
     }
 
-    modalEditar = modalEditar || new bootstrap.Modal(modalEditarEl);
-    modalEditar.show();
+    edicaoPessoaIdInput.value = pessoa.id;
+    edicaoNomeInput.value = pessoa.nome || '';
+    edicaoEmailInput.value = pessoa.email || '';
+
+    if (tipo === 'aluno') {
+      if (modalEditarPessoaTitulo) modalEditarPessoaTitulo.textContent = 'Editar aluno';
+      if (grupoEdicaoAluno) grupoEdicaoAluno.classList.remove('d-none');
+      if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.add('d-none');
+
+      if (edicaoRAInput) edicaoRAInput.value = pessoa.ra || '';
+      if (edicaoTurmaInput) edicaoTurmaInput.value = pessoa.turma || '';
+    } else {
+      const disc = pessoa.disciplina || pessoa.disc || '';
+      if (modalEditarPessoaTitulo) modalEditarPessoaTitulo.textContent = 'Editar professor';
+      if (grupoEdicaoAluno) grupoEdicaoAluno.classList.add('d-none');
+      if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.remove('d-none');
+
+      if (edicaoDisciplinaInput) edicaoDisciplinaInput.value = disc;
+    }
+
+    modalEditarPessoa.show();
   }
 
-  if (formModal) {
-    formModal.addEventListener('submit', function (e) {
-      e.preventDefault();
-      var tipoX = document.getElementById('modalTipo').value;
-      var idx = parseInt(document.getElementById('modalIndex').value, 10);
+  if (btnSalvarEdicaoPessoa) {
+    btnSalvarEdicaoPessoa.addEventListener('click', async () => {
+      if (!tipoEdicaoPessoa || !edicaoPessoaIdInput) return;
 
-      if (tipoX === 'aluno') {
-        var n  = (document.getElementById('mAlunoNome').value || '').trim();
-        var em = (document.getElementById('mAlunoEmail').value || '').trim();
-        var ra = (document.getElementById('mAlunoRA').value || '').trim();
-        var tu = (document.getElementById('mAlunoTurma').value || '').trim();
-        var dn = (document.getElementById('mAlunoNasc').value || '').trim();
-        if (!n || !em || !ra || !tu || !dn) return;
-        var notas = normalizarNotasAluno(alunos[idx]);
-        alunos[idx] = { nome: n, email: em, ra: ra, turma: tu, nasc: dn, notas: notas };
-        gravarJSON(KEY_ALUNOS, alunos);
-      } else {
-        var np = (document.getElementById('mProfNome').value || '').trim();
-        var ep = (document.getElementById('mProfEmail').value || '').trim();
-        var dp = (document.getElementById('mProfDisc').value || '').trim();
-        var dnP = (document.getElementById('mProfNasc').value || '').trim();
-        if (!np || !ep || !dp || !dnP) return;
-        professores[idx] = { nome: np, email: ep, disc: dp, nasc: dnP };
-        gravarJSON(KEY_PROFS, professores);
+      const id = parseInt(edicaoPessoaIdInput.value, 10);
+      const nome = (edicaoNomeInput?.value || '').trim();
+      const email = (edicaoEmailInput?.value || '').trim();
+
+      if (fbEdicaoPessoa) {
+        fbEdicaoPessoa.textContent = '';
+        fbEdicaoPessoa.className = 'small mt-2';
       }
 
-      if (modalEditar) modalEditar.hide();
-      atualizarFiltros();
-      atualizarSelTurmas(selTurmaNotas);
-      atualizarNotas();
-      atualizarGraficos();
-      renderListas();
+      if (!nome || !email) {
+        if (fbEdicaoPessoa) {
+          fbEdicaoPessoa.textContent = 'Preencha nome e e-mail.';
+          fbEdicaoPessoa.classList.add('text-danger');
+        }
+        return;
+      }
+
+      try {
+        if (tipoEdicaoPessoa === 'aluno') {
+          const ra = (edicaoRAInput?.value || '').trim();
+          const turma = (edicaoTurmaInput?.value || '').trim();
+          if (!ra || !turma) {
+            if (fbEdicaoPessoa) {
+              fbEdicaoPessoa.textContent = 'Preencha RA e Turma.';
+              fbEdicaoPessoa.classList.add('text-danger');
+            }
+            return;
+          }
+
+          const payload = { id, nome, email, turma, ra };
+          await apiFetch(`/Alunos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+
+          const idx = alunos.findIndex(a => a.id === id);
+          if (idx >= 0) Object.assign(alunos[idx], payload);
+
+          atualizarListagens();
+          atualizarFiltros();
+          atualizarTurmasNotas();
+          atualizarGraficos();
+        } else {
+          const disciplina = (edicaoDisciplinaInput?.value || '').trim();
+          if (!disciplina) {
+            if (fbEdicaoPessoa) {
+              fbEdicaoPessoa.textContent = 'Informe a disciplina.';
+              fbEdicaoPessoa.classList.add('text-danger');
+            }
+            return;
+          }
+
+          const payload = { id, nome, email, disciplina };
+          await apiFetch(`/Professores/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+
+          const idx = professores.findIndex(p => p.id === id);
+          if (idx >= 0) {
+            professores[idx].nome = nome;
+            professores[idx].email = email;
+            professores[idx].disciplina = disciplina;
+          }
+
+          atualizarListagens();
+          atualizarFiltros();
+        }
+
+        if (fbEdicaoPessoa) {
+          fbEdicaoPessoa.textContent = 'Alterações salvas com sucesso.';
+          fbEdicaoPessoa.classList.add('text-success');
+        }
+
+        setTimeout(() => {
+          if (modalEditarPessoa) modalEditarPessoa.hide();
+        }, 500);
+      } catch (err) {
+        console.error(err);
+        if (fbEdicaoPessoa) {
+          fbEdicaoPessoa.textContent = err.message || 'Erro ao salvar alterações.';
+          fbEdicaoPessoa.classList.add('text-danger');
+        }
+      }
     });
   }
 
-  // === Gráficos ===
-  var chartNotas;
-  function atualizarGraficos() {
-    var msg = document.getElementById('grafMsg');
-    var canvas = document.getElementById('chartNotas');
-    var titulo = document.getElementById('tituloGraficos');
-    var subtitulo = document.getElementById('subtituloGraficos');
-    if (!canvas) return;
+  if (btnConfirmarExclusao) {
+    btnConfirmarExclusao.addEventListener('click', async () => {
+      if (!confirmacaoContexto) return;
 
-    if (msg) msg.textContent = '';
-    if (subtitulo) subtitulo.textContent = '';
+      const ctx = confirmacaoContexto;
+      confirmacaoContexto = null;
 
-    if (chartNotas) {
-      chartNotas.destroy();
-      chartNotas = null;
-    }
-
-    var labels = [];
-    var dados = [];
-    var tipoGrafico = 'bar';
-    var labelDataset = '';
-
-    if (isAluno) {
-      if (!alunoAtual) {
-        if (msg) msg.textContent = 'Nenhum aluno associado ao usuário logado.';
-        return;
-      }
-      var notasNorm = normalizarNotasAluno(alunoAtual);
-      var porDisc = {};
-      for (var i = 0; i < notasNorm.length; i++) {
-        var d = notasNorm[i].disciplina || 'Geral';
-        if (!porDisc[d]) porDisc[d] = [];
-        porDisc[d].push(notasNorm[i].valor);
-      }
-      var discs = Object.keys(porDisc);
-      if (!discs.length) {
-        if (msg) msg.textContent = 'Você ainda não possui notas registradas.';
-        return;
-      }
-      labels = discs;
-      for (var j = 0; j < discs.length; j++) {
-        var m = media(porDisc[discs[j]]);
-        dados.push(m == null ? 0 : Number(m.toFixed(2)));
-      }
-      tipoGrafico = 'bar';
-      labelDataset = 'Média por disciplina';
-      if (titulo) titulo.textContent = 'Suas notas por disciplina';
-      if (subtitulo) subtitulo.textContent = 'Cada coluna representa a sua média em uma disciplina.';
-    } else if (isProfessor) {
-      if (!disciplinaProfessorAtual) {
-        if (msg) msg.textContent = 'Nenhuma disciplina associada ao professor logado.';
-        if (titulo) titulo.textContent = 'Gráficos de Desempenho';
-        return;
-      }
-      var turmasNotas = {};
-      for (var a2 = 0; a2 < alunos.length; a2++) {
-        var al = alunos[a2];
-        if (!al.turma) continue;
-        var ns = notasDaDisciplina(al, disciplinaProfessorAtual);
-        if (!ns.length) continue;
-        if (!turmasNotas[al.turma]) turmasNotas[al.turma] = [];
-        for (var n2 = 0; n2 < ns.length; n2++) turmasNotas[al.turma].push(ns[n2]);
-      }
-      var turmas = Object.keys(turmasNotas).sort();
-      if (!turmas.length) {
-        if (msg) msg.textContent = 'Ainda não há notas para a disciplina "' + disciplinaProfessorAtual + '".';
-        if (titulo) titulo.textContent = 'Médias por turma';
-        return;
-      }
-      labels = turmas;
-      for (var t2 = 0; t2 < turmas.length; t2++) {
-        var mt = media(turmasNotas[t2]);
-        dados.push(mt == null ? 0 : Number(mt.toFixed(2)));
-      }
-      tipoGrafico = 'line';
-      labelDataset = 'Média das turmas';
-      if (titulo) titulo.textContent = 'Médias por turma — ' + disciplinaProfessorAtual;
-      if (subtitulo) subtitulo.textContent = 'Cada ponto representa a média das notas por turma, apenas da sua disciplina.';
-    } else {
-      // Admin: visão geral
-      var setTurmas = {};
-      for (var ai = 0; ai < alunos.length; ai++) {
-        if (alunos[ai].turma) setTurmas[alunos[ai].turma] = true;
-      }
-      var turmasAdm = Object.keys(setTurmas).sort();
-      if (!turmasAdm.length) {
-        if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
-        if (titulo) titulo.textContent = 'Gráficos de Desempenho';
-        return;
-      }
-      labels = turmasAdm;
-      for (var ta = 0; ta < turmasAdm.length; ta++) {
-        var notasT = [];
-        for (var ia = 0; ia < alunos.length; ia++) {
-          if (alunos[ia].turma === turmasAdm[ta]) {
-            var nsG = normalizarNotasAluno(alunos[ia]);
-            for (var ng = 0; ng < nsG.length; ng++) {
-              notasT.push(nsG[ng].valor);
-            }
-          }
+      try {
+        if (ctx.tipo === 'aluno') {
+          await apiFetch(`/Alunos/${ctx.id}`, { method: 'DELETE' });
+          alunos = alunos.filter(a => a.id !== ctx.id);
+          atualizarListagens();
+          atualizarFiltros();
+          atualizarTurmasNotas();
+          atualizarGraficos();
+        } else if (ctx.tipo === 'professor') {
+          await apiFetch(`/Professores/${ctx.id}`, { method: 'DELETE' });
+          professores = professores.filter(p => p.id !== ctx.id);
+          atualizarListagens();
+          atualizarFiltros();
         }
-        var mg = media(notasT);
-        dados.push(mg == null ? 0 : Number(mg.toFixed(2)));
+      } catch (err) {
+        console.error(err);
+        alert(err.message || 'Erro ao realizar exclusão.');
+      } finally {
+        if (modalConfirmacao) modalConfirmacao.hide();
       }
-      tipoGrafico = 'bar';
-      labelDataset = 'Média geral das turmas';
-      if (titulo) titulo.textContent = 'Média geral das turmas';
-      if (subtitulo) subtitulo.textContent = 'Visão geral para administração.';
-    }
-
-    var cfg = {
-      labels: labels,
-      datasets: [{
-        label: labelDataset,
-        data: dados
-      }]
-    };
-
-    var opt = {
-      responsive: true,
-      scales: {
-        y: { beginAtZero: true, suggestedMax: 10 }
-      }
-    };
-
-    chartNotas = new Chart(canvas, { type: tipoGrafico, data: cfg, options: opt });
-    if (msg && !msg.textContent) msg.textContent = 'Passe o mouse sobre os pontos/colunas para ver os valores.';
+    });
   }
 
-  // === Notas (professor só na própria disciplina) ===
-  var selTurmaNotas = document.getElementById('selTurmaNotas');
-  var tbodyNotas = document.getElementById('tbodyNotas');
+  if (tbodyAlunos) {
+    tbodyAlunos.addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-acao]');
+      if (!btn) return;
+      const acao = btn.dataset.acao;
+      const id = parseInt(btn.dataset.id, 10);
+      if (!id) return;
 
-  if (selTurmaNotas) selTurmaNotas.addEventListener('change', atualizarNotas);
+      const aluno = alunos.find(a => a.id === id);
+      if (!aluno) return;
 
-  function atualizarSelTurmas(el) {
-    if (!el) return;
-    var atual = el.value || '__selecione__';
-    var setT = {};
-    for (var i = 0; i < alunos.length; i++) {
-      var t = (alunos[i].turma || '').trim();
-      if (t) setT[t] = true;
-    }
-    var turmas = Object.keys(setT).sort();
-    var opts = '<option value="__selecione__">Selecione...</option>';
-    for (var j = 0; j < turmas.length; j++) opts += '<option>' + turmas[j] + '</option>';
-    el.innerHTML = opts;
-    el.value = atual;
+      if (acao === 'detalhes-aluno') {
+        abrirModalDetalhesPessoa('aluno', aluno);
+      }
+
+      if (acao === 'edit-aluno') {
+        if (!isAdmin) return;
+        abrirModalEditarPessoa('aluno', aluno);
+      }
+
+      if (acao === 'del-aluno') {
+        if (!isAdmin || !modalConfirmacaoTitulo || !modalConfirmacaoMensagem || !modalConfirmacao) return;
+        confirmacaoContexto = { tipo: 'aluno', id: aluno.id };
+        modalConfirmacaoTitulo.textContent = 'Excluir aluno';
+        modalConfirmacaoMensagem.textContent = `Tem certeza que deseja excluir o aluno "${aluno.nome}"? Esta ação não poderá ser desfeita.`;
+        modalConfirmacao.show();
+      }
+    });
+  }
+
+  if (tbodyProfessores) {
+    tbodyProfessores.addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-acao]');
+      if (!btn) return;
+      const acao = btn.dataset.acao;
+      const id = parseInt(btn.dataset.id, 10);
+      if (!id) return;
+
+      const prof = professores.find(p => p.id === id);
+      if (!prof) return;
+
+      if (acao === 'detalhes-prof') {
+        abrirModalDetalhesPessoa('professor', prof);
+      }
+
+      if (acao === 'edit-prof') {
+        if (!isAdmin) return;
+        abrirModalEditarPessoa('professor', prof);
+      }
+
+      if (acao === 'del-prof') {
+        if (!isAdmin || !modalConfirmacaoTitulo || !modalConfirmacaoMensagem || !modalConfirmacao) return;
+        confirmacaoContexto = { tipo: 'professor', id: prof.id };
+        modalConfirmacaoTitulo.textContent = 'Excluir professor';
+        modalConfirmacaoMensagem.textContent = `Tem certeza que deseja excluir o professor "${prof.nome}"? Esta ação não poderá ser desfeita.`;
+        modalConfirmacao.show();
+      }
+    });
+  }
+
+  // ================== NOTAS (PROFESSOR) ==================
+  const selTurmaNotas = document.getElementById('selTurmaNotas');
+  const tbodyNotas = document.getElementById('tbodyNotas');
+
+  function atualizarTurmasNotas() {
+    if (!selTurmaNotas) return;
+    const atual = selTurmaNotas.value || '__selecione__';
+    let opts = '<option value="__selecione__">Selecione...</option>';
+    turmas.forEach(t => opts += `<option>${t}</option>`);
+    selTurmaNotas.innerHTML = opts;
+    selTurmaNotas.value = atual;
+  }
+
+  if (selTurmaNotas) {
+    selTurmaNotas.addEventListener('change', atualizarNotas);
+  }
+
+  function media(array) {
+    if (!array || !array.length) return null;
+    const s = array.reduce((acc, v) => acc + v, 0);
+    return s / array.length;
   }
 
   function atualizarNotas() {
     if (!tbodyNotas) return;
-    var turma = selTurmaNotas ? (selTurmaNotas.value || '__selecione__') : '__selecione__';
+    const turma = selTurmaNotas ? (selTurmaNotas.value || '__selecione__') : '__selecione__';
     tbodyNotas.innerHTML = '';
-    var lista = [];
-    for (var i = 0; i < alunos.length; i++) {
-      var a = alunos[i];
-      if (turma !== '__selecione__' && (a.turma || '') !== turma) continue;
-      lista.push({ idx: i, aluno: a });
-    }
-    if (!lista.length) {
-      var tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="6" class="text-center text-body-secondary">Nenhum aluno encontrado.</td>';
+
+    if (!isProfessor) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+        Somente professores podem lançar notas.
+      </td>`;
       tbodyNotas.appendChild(tr);
       return;
     }
 
-    var disc = disciplinaProfessorAtual || null;
-
-    for (var j = 0; j < lista.length; j++) {
-      var aobj = lista[j];
-      var notasNorm = normalizarNotasAluno(aobj.aluno);
-
-      var chips = '';
-      for (var n = 0; n < notasNorm.length; n++) {
-        if (isProfessor && disc && notasNorm[n].disciplina !== disc) continue; // professor só vê notas da própria disciplina
-        var valorNota = notasNorm[n].valor;
-        chips += '<span class="badge text-bg-secondary me-1 mb-1">' +
-          Number(valorNota).toFixed(1) +
-          ' <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-rem-nota" data-aidx="' + aobj.idx + '" data-nidx="' + n + '" title="Remover">×</button>' +
-        '</span>';
-      }
-
-      var notasParaMedia = [];
-      for (var nm = 0; nm < notasNorm.length; nm++) {
-        if (isProfessor && disc && notasNorm[nm].disciplina !== disc) continue;
-        notasParaMedia.push(notasNorm[nm].valor);
-      }
-      var mediaValor = media(notasParaMedia);
-
-      var formNota =
-        '<div class="input-group input-group-sm" style="max-width:180px;">' +
-          '<input type="number" class="form-control form-control-sm inp-nova-nota" min="0" max="10" step="0.1" placeholder="Ex.: 7.5" data-aidx="' + aobj.idx + '">' +
-          '<button class="btn btn-primary btn-add-nota" data-aidx="' + aobj.idx + '">Adicionar</button>' +
-        '</div>';
-
-      if (!isProfessor) {
-        // Admin não deve adicionar notas se quiser seguir estrito,
-        // mas vamos apenas desabilitar visualmente o botão.
-        formNota =
-          '<div class="text-body-secondary small">Somente professores podem lançar notas.</div>';
-      }
-
-      var tr2 = document.createElement('tr');
-      tr2.innerHTML =
-        '<td>' + aobj.aluno.nome + '</td>' +
-        '<td>' + aobj.aluno.ra + '</td>' +
-        '<td>' + (aobj.aluno.turma || '—') + '</td>' +
-        '<td>' + (chips || '<span class="text-body-secondary">— sem notas —</span>') + '</td>' +
-        '<td>' + formNota + '</td>' +
-        '<td>' + (mediaValor == null ? '—' : mediaValor.toFixed(2)) + '</td>';
-      tbodyNotas.appendChild(tr2);
+    if (turma === '__selecione__') {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+        Selecione uma turma para lançar notas.
+      </td>`;
+      tbodyNotas.appendChild(tr);
+      return;
     }
+
+    const alunosTurma = alunos.filter(a => a.turma === turma);
+    if (!alunosTurma.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+        Nenhum aluno encontrado nesta turma.
+      </td>`;
+      tbodyNotas.appendChild(tr);
+      return;
+    }
+
+    alunosTurma.forEach(a => {
+      const notasAluno = notasProfessor.filter(n => n.alunoId === a.id);
+      const chips = notasAluno.map(n => `
+        <span class="badge text-bg-secondary me-1 mb-1">
+          ${Number(n.valor).toFixed(1)}
+          <button type="button"
+                  class="btn btn-sm btn-link text-white p-0 ms-1"
+                  data-acao="rem-nota"
+                  data-id="${n.id}"
+                  title="Remover">×</button>
+        </span>`).join('') || '<span class="text-body-secondary">— sem notas —</span>';
+
+      const mediaAluno = media(notasAluno.map(n => Number(n.valor)));
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${a.nome}</td>
+        <td>${a.ra}</td>
+        <td>${a.turma || '—'}</td>
+        <td>${chips}</td>
+        <td>
+          <div class="input-group input-group-sm" style="max-width:180px;">
+            <input type="number" class="form-control form-control-sm"
+                   min="0" max="10" step="0.1"
+                   placeholder="Ex.: 7.5"
+                   data-acao="nova-nota-input"
+                   data-aluno-id="${a.id}">
+            <button class="btn btn-primary btn-add-nota"
+                    data-acao="add-nota"
+                    data-aluno-id="${a.id}">Adicionar</button>
+          </div>
+        </td>
+        <td>${mediaAluno == null ? '—' : mediaAluno.toFixed(2)}</td>`;
+      tbodyNotas.appendChild(tr);
+    });
   }
 
   if (tbodyNotas) {
-    tbodyNotas.addEventListener('click', function (e) {
-      var add = e.target.classList && e.target.classList.contains('btn-add-nota');
-      var rem = e.target.classList && e.target.classList.contains('btn-rem-nota');
+    tbodyNotas.addEventListener('click', async e => {
+      const btn = e.target.closest('button');
+      if (!btn || !btn.dataset.acao) return;
+      const acao = btn.dataset.acao;
 
-      if (add) {
+      if (acao === 'add-nota') {
         if (!isProfessor) return;
-        if (!disciplinaProfessorAtual) {
-          alert('Nenhuma disciplina associada ao professor logado.');
-          return;
-        }
-        var aidx = parseInt(e.target.getAttribute('data-aidx'),10);
-        var inp = tbodyNotas.querySelector('.inp-nova-nota[data-aidx="' + aidx + '"]');
-        var val = parseFloat((inp && inp.value ? inp.value : '').replace(',', '.'));
+
+        const alunoId = parseInt(btn.dataset.alunoId, 10);
+        const inp = tbodyNotas.querySelector(`input[data-acao="nova-nota-input"][data-aluno-id="${alunoId}"]`);
+        const val = parseFloat((inp && inp.value || '').replace(',', '.'));
         if (isNaN(val) || val < 0 || val > 10) {
           alert('Informe uma nota válida entre 0 e 10.');
           return;
         }
-        var notas = normalizarNotasAluno(alunos[aidx]);
-        notas.push({ disciplina: disciplinaProfessorAtual, valor: Number(val) });
-        alunos[aidx].notas = notas;
-        gravarJSON(KEY_ALUNOS, alunos);
-        inp.value = '';
-        atualizarNotas();
-        atualizarGraficos();
-      }
 
-      if (rem) {
-        if (!isProfessor) return;
-        var aidx2 = parseInt(e.target.getAttribute('data-aidx'),10);
-        var nidx = parseInt(e.target.getAttribute('data-nidx'),10);
-        var notas2 = normalizarNotasAluno(alunos[aidx2]);
-        if (nidx >= 0 && nidx < notas2.length) {
-          if (!disciplinaProfessorAtual || notas2[nidx].disciplina !== disciplinaProfessorAtual) return;
-          notas2.splice(nidx,1);
-          alunos[aidx2].notas = notas2;
-          gravarJSON(KEY_ALUNOS, alunos);
+        try {
+          const body = JSON.stringify({ alunoId, valor: val });
+          const nova = await apiFetch('/Notas', { method: 'POST', body });
+          notasProfessor.push(nova);
+          if (inp) inp.value = '';
           atualizarNotas();
           atualizarGraficos();
+        } catch (err) {
+          console.error(err);
+          alert(err.message || 'Erro ao lançar nota.');
+        }
+      }
+
+      if (acao === 'rem-nota') {
+        if (!isProfessor) return;
+        const id = parseInt(btn.dataset.id, 10);
+        if (!confirm('Remover esta nota?')) return;
+
+        try {
+          await apiFetch(`/Notas/${id}`, { method: 'DELETE' });
+          notasProfessor = notasProfessor.filter(n => n.id !== id);
+          atualizarNotas();
+          atualizarGraficos();
+        } catch (err) {
+          console.error(err);
+          alert(err.message || 'Erro ao remover nota.');
         }
       }
     });
   }
 
-  // === Calendário fullcalendar (AGORA INTEGRADO COM API) ===
-  var calEl = document.getElementById('calendario');
+  // ================== GRÁFICOS ==================
+  let chartNotas;
+
+  async function atualizarGraficos() {
+  const canvas = document.getElementById('chartNotas');
+  const msg = document.getElementById('grafMsg');
+  const titulo = document.getElementById('tituloGraficos');
+  const subtitulo = document.getElementById('subtituloGraficos');
+  const selTurmaGraficos = document.getElementById('selTurmaGraficos');
+
+  if (!canvas) return;
+  if (chartNotas) {
+    chartNotas.destroy();
+    chartNotas = null;
+  }
+  if (msg) msg.textContent = '';
+  if (subtitulo) subtitulo.textContent = '';
+
+  let labels = [];
+  let dados = [];
+  let tipo = 'bar';           // sempre gráfico de colunas
+  let labelDataset = '';
+
+  try {
+    // ===== GRÁFICO DO ALUNO =====
+    if (isAluno) {
+      if (titulo) titulo.textContent = 'Médias por disciplina (suas notas)';
+
+      // Descobre o aluno logado
+      const aluno = await apiFetch('/Alunos/me');
+      if (!aluno || !aluno.id) {
+        if (msg) msg.textContent = 'Não foi possível identificar o aluno logado para o gráfico.';
+        return;
+      }
+
+      // Usa o endpoint de gráfico do aluno
+      const resp = await apiFetch(`/Notas/grafico-aluno/${aluno.id}`);
+      const dadosApi = resp || [];
+      if (!dadosApi.length) {
+        if (msg) msg.textContent = 'Ainda não há notas lançadas para você.';
+        return;
+      }
+
+      labels = dadosApi.map(x => x.disciplina);
+      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
+      tipo = 'bar';
+      labelDataset = 'Média por disciplina';
+      if (subtitulo) {
+        subtitulo.textContent = 'Cada coluna representa a sua média em cada disciplina.';
+      }
+    }
+
+    // ===== GRÁFICO DO PROFESSOR =====
+    if (isProfessor) {
+      if (titulo) titulo.textContent = 'Médias por turma (sua disciplina)';
+      const resp = await apiFetch('/Notas/grafico-professor');
+      const dadosApi = resp || [];
+      if (!dadosApi.length) {
+        if (msg) msg.textContent = 'Ainda não há notas lançadas na sua disciplina.';
+        return;
+      }
+
+      labels = dadosApi.map(x => x.turma);
+      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
+      tipo = 'bar'; // agora em colunas
+      labelDataset = 'Média das turmas';
+      if (subtitulo) {
+        subtitulo.textContent = 'Cada coluna representa a média da turma na sua disciplina.';
+      }
+    }
+
+    // ===== GRÁFICO DO ADMIN =====
+    if (isAdmin) {
+      if (!turmas.length) {
+        if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
+        if (titulo) titulo.textContent = 'Gráficos de Desempenho';
+        return;
+      }
+
+      let turmaSelecionada =
+        (selTurmaGraficos && selTurmaGraficos.value && selTurmaGraficos.value !== '__todas__')
+          ? selTurmaGraficos.value
+          : turmas[0];
+
+      if (titulo) titulo.textContent = `Desempenho da turma ${turmaSelecionada}`;
+      const resp = await apiFetch(`/Notas/grafico-admin?turma=${encodeURIComponent(turmaSelecionada)}`);
+      const dadosApi = resp || [];
+      if (!dadosApi.length) {
+        if (msg) msg.textContent = 'Ainda não há notas lançadas para essa turma.';
+        return;
+      }
+
+      labels = dadosApi.map(x => x.disciplina);
+      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
+      tipo = 'bar';
+      labelDataset = 'Média por disciplina';
+      if (subtitulo) {
+        subtitulo.textContent = 'Cada coluna representa a média da turma em cada disciplina.';
+      }
+    }
+
+    if (!labels.length) {
+      if (msg) msg.textContent = 'Sem dados para exibir.';
+      return;
+    }
+
+    // Aqui estava o erro antigo: agora usamos "tipo"
+    chartNotas = new Chart(canvas, {
+      type: tipo,
+      data: {
+        labels,
+        datasets: [{
+          label: labelDataset,
+          data: dados
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            suggestedMax: 10
+          }
+        }
+      }
+    });
+
+    if (msg && !msg.textContent) {
+      msg.textContent = 'Passe o mouse sobre as colunas para ver os valores.';
+    }
+  } catch (err) {
+    console.error(err);
+    if (msg) msg.textContent = err.message || 'Erro ao carregar dados do gráfico.';
+  }
+}
+
+
+  const selTurmaGraficos = document.getElementById('selTurmaGraficos');
+  if (selTurmaGraficos) {
+    selTurmaGraficos.addEventListener('change', atualizarGraficos);
+  }
+
+  // ================== CALENDÁRIO ==================
+  const calEl = document.getElementById('calendario');
+
+  function limparFormularioEvento() {
+    if (eventoIdInput) eventoIdInput.value = '';
+    if (eventoTituloInput) eventoTituloInput.value = '';
+    if (eventoDataInicioInput) eventoDataInicioInput.value = '';
+    if (eventoDataFimInput) eventoDataFimInput.value = '';
+    if (fbEvento) {
+      fbEvento.textContent = '';
+      fbEvento.className = 'small mt-1';
+    }
+  }
+
+  function abrirModalEventoCriar(dataDefault) {
+    if (!modalEvento) return;
+    limparFormularioEvento();
+
+    const tituloModal = modalEventoEl?.querySelector('.modal-title');
+    if (tituloModal) tituloModal.textContent = 'Adicionar evento';
+
+    if (eventoDataInicioInput && dataDefault) {
+      eventoDataInicioInput.value = dataDefault;
+    }
+
+    if (btnExcluirEvento) btnExcluirEvento.classList.add('d-none');
+    eventoSelecionado = null;
+    modalEvento.show();
+  }
+
+  function abrirModalEventoEditar(ev) {
+    if (!modalEvento || !ev) return;
+    limparFormularioEvento();
+
+    const tituloModal = modalEventoEl?.querySelector('.modal-title');
+    if (tituloModal) tituloModal.textContent = 'Editar evento';
+
+    if (eventoIdInput) eventoIdInput.value = ev.id || '';
+    if (eventoTituloInput) eventoTituloInput.value = ev.title || '';
+
+    const startStr = ev.startStr ? ev.startStr.substring(0, 10) : '';
+    const endStr = ev.endStr ? ev.endStr.substring(0, 10) : '';
+
+    if (eventoDataInicioInput) eventoDataInicioInput.value = startStr;
+    if (eventoDataFimInput) eventoDataFimInput.value = endStr;
+
+    if (btnExcluirEvento) btnExcluirEvento.classList.remove('d-none');
+
+    eventoSelecionado = ev;
+    modalEvento.show();
+  }
+
   if (calEl && window.FullCalendar) {
     calendar = new FullCalendar.Calendar(calEl, {
       initialView: 'dayGridMonth',
       height: 'auto',
       headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
       selectable: false,
-      editable: (isProfessor || isAdmin),
-      events: eventosStore, // cache local inicial, depois substituído pelo que vier da API
-      eventClick: async function(info) {
+      editable: isProfessor || isAdmin,
+      events: [],
+      eventClick: function (info) {
         if (!isProfessor && !isAdmin) return;
-        var ev = info.event;
-        var novo = prompt('Editar título (deixe vazio para excluir):', ev.title);
-        if (novo === null) return;
-
-        var idNum = parseInt(ev.id, 10);
-
-        if (novo === '') {
-          if (confirm('Excluir este evento?')) {
-            try {
-              await apiFetch('/Eventos/' + idNum, { method: 'DELETE' });
-              ev.remove();
-              salvarEventos(calendar);
-              salvarNotificacaoAlteracao(ev, 'excluido');
-            } catch (err) {
-              console.error(err);
-              alert(err.message || 'Erro ao excluir evento.');
-            }
-          }
-        } else {
-          try {
-            // Atualiza no back
-            var payload = {
-              id: idNum,
-              titulo: novo,
-              dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
-              dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
-              professorId: null
-            };
-            await apiFetch('/Eventos/' + idNum, {
-              method: 'PUT',
-              body: JSON.stringify(payload)
-            });
-
-            ev.setProp('title', novo);
-            salvarEventos(calendar);
-            salvarNotificacaoAlteracao(ev, 'editado');
-          } catch (err2) {
-            console.error(err2);
-            alert(err2.message || 'Erro ao editar evento.');
-          }
-        }
-      },
-      eventDrop: async function(info){
-        if (!isProfessor && !isAdmin) return;
-        var ev = info.event;
-        var idNum = parseInt(ev.id, 10);
-        try {
-          var payload = {
-            id: idNum,
-            titulo: ev.title,
-            dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
-            dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
-            professorId: null
-          };
-          await apiFetch('/Eventos/' + idNum, {
-            method: 'PUT',
-            body: JSON.stringify(payload)
-          });
-          salvarEventos(calendar);
-          salvarNotificacaoAlteracao(ev, 'movido');
-        } catch (err) {
-          console.error(err);
-          alert(err.message || 'Erro ao mover evento.');
-          info.revert();
-        }
-      },
-      eventResize: async function(info){
-        if (!isProfessor && !isAdmin) return;
-        var ev = info.event;
-        var idNum = parseInt(ev.id, 10);
-        try {
-          var payload = {
-            id: idNum,
-            titulo: ev.title,
-            dataInicio: ev.startStr || (ev.start && ev.start.toISOString && ev.start.toISOString()) || null,
-            dataFim: ev.endStr || (ev.end && ev.end.toISOString && ev.end.toISOString()) || null,
-            professorId: null
-          };
-          await apiFetch('/Eventos/' + idNum, {
-            method: 'PUT',
-            body: JSON.stringify(payload)
-          });
-          salvarEventos(calendar);
-          salvarNotificacaoAlteracao(ev, 'datas_alteradas');
-        } catch (err) {
-          console.error(err);
-          alert(err.message || 'Erro ao redimensionar evento.');
-          info.revert();
-        }
+        abrirModalEventoEditar(info.event);
       }
     });
 
-    var btnAddEvento = document.getElementById('btnAddEvento');
-    var modalEventoEl = document.getElementById('modalEvento');
-    var formEvento = document.getElementById('formEvento');
-    var modalEvento;
-
+    let btnAddEvento = document.getElementById('btnAddEvento');
     if (!isProfessor && !isAdmin && btnAddEvento) {
       btnAddEvento.classList.add('d-none');
     }
 
-    if ((isProfessor || isAdmin) && btnAddEvento) {
-      btnAddEvento.addEventListener('click', function () {
-        if (!modalEvento) modalEvento = new bootstrap.Modal(modalEventoEl);
-        if (formEvento) formEvento.reset();
-        modalEvento.show();
+    if (btnAddEvento && (isProfessor || isAdmin)) {
+      btnAddEvento.addEventListener('click', () => {
+        abrirModalEventoCriar();
       });
+    }
 
-      if (formEvento) {
-        formEvento.addEventListener('submit', async function (e) {
-          e.preventDefault();
-          var title = (document.getElementById('evtTitulo').value || '').trim();
-          var start = document.getElementById('evtInicio').value;
-          var end = document.getElementById('evtFim').value;
-          if (!title || !start) {
-            alert('Preencha pelo menos o título e a data inicial.');
-            return;
+    if (btnSalvarEvento) {
+      btnSalvarEvento.addEventListener('click', async () => {
+        if (!isProfessor && !isAdmin) return;
+
+        if (fbEvento) {
+          fbEvento.textContent = '';
+          fbEvento.className = 'small mt-1';
+        }
+
+        const idStr = (eventoIdInput?.value || '').trim();
+        const titulo = (eventoTituloInput?.value || '').trim();
+        const dataInicio = (eventoDataInicioInput?.value || '').trim();
+        const dataFim = (eventoDataFimInput?.value || '').trim();
+
+        if (!titulo || !dataInicio) {
+          if (fbEvento) {
+            fbEvento.textContent = 'Preencha pelo menos título e data de início.';
+            fbEvento.classList.add('text-danger');
           }
+          return;
+        }
 
-          try {
-            // Cria no back
-            var payload = {
-              titulo: title,
-              dataInicio: start,
-              dataFim: end || null,
-              professorId: null
-            };
-            var criado = await apiFetch('/Eventos', {
+        const payload = {
+          id: idStr ? parseInt(idStr, 10) : 0,
+          titulo,
+          dataInicio,
+          dataFim: dataFim || null
+        };
+
+        try {
+          if (!idStr) {
+            const criado = await apiFetch('/Eventos', {
               method: 'POST',
               body: JSON.stringify(payload)
             });
-
-            var ev = {
+            calendar.addEvent({
               id: String(criado.id),
               title: criado.titulo,
               start: criado.dataInicio,
               end: criado.dataFim
-            };
-            calendar.addEvent(ev);
-            salvarEventos(calendar);
-            if (modalEvento) modalEvento.hide();
-            salvarNotificacao({ id: ev.id, title: ev.title, startStr: start }, 'novo');
-          } catch (err) {
-            console.error(err);
-            alert(err.message || 'Erro ao criar evento.');
+            });
+          } else {
+            const idNum = parseInt(idStr, 10);
+            await apiFetch(`/Eventos/${idNum}`, {
+              method: 'PUT',
+              body: JSON.stringify(payload)
+            });
+
+            const ev = calendar.getEventById(String(idNum));
+            if (ev) {
+              ev.setProp('title', titulo);
+              ev.setStart(dataInicio);
+              ev.setEnd(dataFim || null);
+            }
           }
-        });
-      }
+
+          if (fbEvento) {
+            fbEvento.textContent = 'Evento salvo com sucesso.';
+            fbEvento.classList.add('text-success');
+          }
+
+          setTimeout(() => {
+            if (modalEvento) modalEvento.hide();
+          }, 500);
+        } catch (err) {
+          console.error(err);
+          if (fbEvento) {
+            fbEvento.textContent = err.message || 'Erro ao salvar evento.';
+            fbEvento.classList.add('text-danger');
+          }
+        }
+      });
     }
 
-    function salvarEventos(cal) {
-      var evs = cal.getEvents();
-      var arr = [];
-      for (var i = 0; i < evs.length; i++) {
-        var e = evs[i];
-        arr.push({
-          id: e.id,
-          title: e.title,
-          start: e.startStr || (e.start ? e.start.toISOString() : null),
-          end: e.endStr || (e.end ? e.end.toISOString() : null),
-          allDay: !!e.allDay
-        });
-      }
-      eventosStore = arr;
-      gravarJSON(KEY_EVENTOS, arr); // cache local opcional
-      atualizarListaEventos();
+    if (btnExcluirEvento) {
+      btnExcluirEvento.addEventListener('click', async () => {
+        if (!isProfessor && !isAdmin) return;
+        const idStr = (eventoIdInput?.value || '').trim();
+        if (!idStr) return;
+
+        if (!confirm('Tem certeza que deseja excluir este evento?')) return;
+
+        const idNum = parseInt(idStr, 10);
+
+        try {
+          await apiFetch(`/Eventos/${idNum}`, { method: 'DELETE' });
+          const ev = calendar.getEventById(String(idNum));
+          if (ev) ev.remove();
+
+          if (fbEvento) {
+            fbEvento.textContent = 'Evento excluído com sucesso.';
+            fbEvento.classList.add('text-success');
+          }
+
+          setTimeout(() => {
+            if (modalEvento) modalEvento.hide();
+          }, 500);
+        } catch (err) {
+          console.error(err);
+          if (fbEvento) {
+            fbEvento.textContent = err.message || 'Erro ao excluir evento.';
+            fbEvento.classList.add('text-danger');
+          }
+        }
+      });
     }
 
-    async function carregarEventos() {
+    (async function carregarEventos() {
       try {
-        var lista = await apiFetch('/Eventos', { method: 'GET' });
-        // lista: [{ id, titulo, dataInicio, dataFim, professorId }]
-        eventosStore = (lista || []).map(function(ev) {
-          return {
+        const lista = await apiFetch('/Eventos');
+        (lista || []).forEach(ev => {
+          calendar.addEvent({
             id: String(ev.id),
             title: ev.titulo,
             start: ev.dataInicio,
-            end: ev.dataFim,
-            allDay: false
-          };
+            end: ev.dataFim
+          });
         });
-        gravarJSON(KEY_EVENTOS, eventosStore);
-
-        calendar.removeAllEvents();
-        for (var i = 0; i < eventosStore.length; i++) {
-          calendar.addEvent(eventosStore[i]);
-        }
-        salvarEventos(calendar);
       } catch (err) {
-        console.error('Erro ao carregar eventos da API', err);
+        console.error('Erro ao carregar eventos', err);
       }
-    }
-
-    // Carrega eventos da API ao iniciar
-    carregarEventos();
+    })();
   }
 
-  // === Inicialização final ===
-  atualizarFiltros();
-  renderListas();
-  atualizarSelTurmas(selTurmaNotas);
-  atualizarNotas();
-  atualizarGraficos();
-  mostrarNotifsNovasAluno();
+  // ================== MATRÍCULAS PENDENTES ==================
+  function formatarDataString(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('pt-BR');
+  }
+
+  function atualizarMatriculasPendentes() {
+    const tbody = document.getElementById('tbodyMatriculasPendentesCadastro');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!isAdmin) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+        Apenas administradores podem ver as matrículas pendentes.
+      </td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    if (!matriculasPendentes.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+        Nenhuma matrícula pendente.
+      </td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    matriculasPendentes.forEach(m => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${m.nome}</td>
+        <td>${m.email}</td>
+        <td>${formatarDataString(m.dataNascimento)}</td>
+        <td>${formatarDataString(m.criadoEm)}</td>
+        <td>${m.status ?? 'Pendente'}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ================== CARREGAMENTO INICIAL ==================
+  async function carregarDadosIniciais() {
+    try {
+      const [alunosApi, profsApi, notasProfApi, turmasApi, matsApi] = await Promise.all([
+        apiFetch('/Alunos'),
+        apiFetch('/Professores'),
+        isProfessor ? apiFetch('/Notas/professor') : Promise.resolve([]),
+        apiFetch('/Alunos/turmas'),
+        isAdmin ? apiFetch('/Matriculas/pendentes') : Promise.resolve([])
+      ]);
+
+      alunos = alunosApi || [];
+      professores = profsApi || [];
+      notasProfessor = notasProfApi || [];
+      turmas = turmasApi || [];
+      matriculasPendentes = matsApi || [];
+
+      atualizarFiltros();
+      atualizarListagens();
+      atualizarTurmasNotas();
+      if (isProfessor) atualizarNotas();
+      if (isAdmin || isProfessor) atualizarGraficos();
+      if (isAdmin) atualizarMatriculasPendentes();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Erro ao carregar dados iniciais.');
+    }
+  }
+
+  carregarDadosIniciais();
 })();

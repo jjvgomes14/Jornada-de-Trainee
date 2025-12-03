@@ -1,10 +1,11 @@
+// script.js
 (function () {
   'use strict';
 
   // ============================
   // CONFIGURAÇÃO DA API
   // ============================
-  const API_BASE_URL = 'http://localhost:5191/api'; // <-- AJUSTE AQUI PARA A SUA API
+  const API_BASE_URL = 'http://localhost:5191/api';
 
   var form = document.getElementById('formLogin');
   var inpUsuario = document.getElementById('usuario');
@@ -41,7 +42,6 @@
     const url = API_BASE_URL + path;
     const baseHeaders = {};
 
-    // login ainda não tem token
     if (!options) options = {};
 
     if (!(options.body instanceof FormData)) {
@@ -94,7 +94,6 @@
         return;
       }
 
-      // Desabilita botão enquanto autentica
       const btn = form.querySelector('button[type="submit"]');
       if (btn) btn.disabled = true;
 
@@ -107,11 +106,10 @@
           })
         });
 
-        // result => { token, username, role }
         localStorage.setItem('authToken', result.token);
         localStorage.setItem('usuarioLogado', result.username);
-        // Armazena exatamente a role vinda da API (Aluno, Professor, Administrador)
         localStorage.setItem('tipoUsuario', result.role);
+        localStorage.setItem('mustChangePassword', result.mustChangePassword ? '1' : '0');
 
         feedback.className = 'mt-3 text-success small text-center';
         feedback.textContent = 'Login bem-sucedido! Redirecionando...';
@@ -158,7 +156,6 @@
       if (btnSubmit) btnSubmit.disabled = true;
 
       try {
-        // Envio real para a API de matrículas
         await apiFetch('/Matriculas/solicitar', {
           method: 'POST',
           body: JSON.stringify({
@@ -168,12 +165,11 @@
           })
         });
 
-        fbMatricula.textContent = 'Solicitação enviada com sucesso!';
+        fbMatricula.textContent = 'Solicitação enviada com sucesso! Você receberá um e-mail de confirmação.';
         fbMatricula.classList.add('text-success');
 
         formMatricula.reset();
 
-        // Fechar modal após 1s (opcional)
         setTimeout(function () {
           var modalEl = document.getElementById('modalMatricula');
           if (modalEl && window.bootstrap) {
