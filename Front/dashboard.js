@@ -202,6 +202,24 @@
   let confirmacaoContexto = null;
   let eventoSelecionado = null;
 
+  // Modal de cadastro de aluno a partir da matrícula pendente
+  const modalCadastroAlunoMatriculaEl = document.getElementById('modalCadastroAlunoMatricula');
+  let modalCadastroAlunoMatricula;
+  if (window.bootstrap && modalCadastroAlunoMatriculaEl) {
+    modalCadastroAlunoMatricula = new bootstrap.Modal(modalCadastroAlunoMatriculaEl);
+  }
+
+  const cadMatIdInput       = document.getElementById('cadMatId');
+  const cadMatNomeInput     = document.getElementById('cadMatNome');
+  const cadMatEmailInput    = document.getElementById('cadMatEmail');
+  const cadMatDataNascInput = document.getElementById('cadMatDataNasc');
+  const cadMatRAInput       = document.getElementById('cadMatRA');
+  const cadMatTurmaInput    = document.getElementById('cadMatTurma');
+  const fbCadastroMatricula = document.getElementById('fbCadastroMatricula');
+  const btnSalvarCadastroMatricula = document.getElementById('btnSalvarCadastroMatricula');
+
+  let matriculaSelecionada = null;
+
   // ================== PERMISSÕES DE SEÇÕES ==================
   function configurarVisibilidadeSecoes() {
     const esconder = [];
@@ -1323,7 +1341,7 @@
 
     if (!isAdmin) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
         Apenas administradores podem ver as matrículas pendentes.
       </td>`;
       tbody.appendChild(tr);
@@ -1332,7 +1350,7 @@
 
     if (!matriculasPendentes.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
         Nenhuma matrícula pendente.
       </td>`;
       tbody.appendChild(tr);
@@ -1346,10 +1364,140 @@
         <td>${m.email}</td>
         <td>${formatarDataString(m.dataNascimento)}</td>
         <td>${formatarDataString(m.criadoEm)}</td>
-        <td>${m.status ?? 'Pendente'}</td>`;
+        <td>${m.status ?? 'Pendente'}</td>
+        <td>
+          <button
+            class="btn btn-sm btn-success"
+            data-acao="cad-matricula"
+            data-id="${m.id}">
+            Cadastrar
+          </button>
+        </td>`;
       tbody.appendChild(tr);
     });
   }
+
+  // Clique no botão "Cadastrar" da lista de matrículas pendentes
+  const tbodyMatriculasPendentesCadastro = document.getElementById('tbodyMatriculasPendentesCadastro');
+  if (tbodyMatriculasPendentesCadastro) {
+    tbodyMatriculasPendentesCadastro.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-acao="cad-matricula"]');
+      if (!btn) return;
+      if (!isAdmin || !modalCadastroAlunoMatricula) return;
+
+      const id = parseInt(btn.dataset.id, 10);
+      if (!id) return;
+
+      const mat = matriculasPendentes.find(m => m.id === id);
+      if (!mat) return;
+
+      matriculaSelecionada = mat;
+
+      // Preenche campos que vêm da solicitação e bloqueia edição
+      if (cadMatIdInput)       cadMatIdInput.value       = mat.id;
+      if (cadMatNomeInput)     cadMatNomeInput.value     = mat.nome || '';
+      if (cadMatEmailInput)    cadMatEmailInput.value    = mat.email || '';
+
+      if (cadMatDataNascInput) {
+        // converte para yyyy-MM-dd para o input date
+        if (mat.dataNascimento) {
+          const d = new Date(mat.dataNascimento);
+          if (!isNaN(d.getTime())) {
+            cadMatDataNascInput.value = d.toISOString().substring(0, 10);
+          } else {
+            cadMatDataNascInput.value = '';
+          }
+        } else {
+          cadMatDataNascInput.value = '';
+        }
+      }
+
+      if (cadMatRAInput)    cadMatRAInput.value = '';
+      if (cadMatTurmaInput) cadMatTurmaInput.value = '';
+
+      if (fbCadastroMatricula) {
+        fbCadastroMatricula.textContent = '';
+        fbCadastroMatricula.className = 'small mt-1';
+      }
+
+      modalCadastroAlunoMatricula.show();
+    });
+  }
+
+  if (btnSalvarCadastroMatricula) {
+    btnSalvarCadastroMatricula.addEventListener('click', async () => {
+      if (!isAdmin || !matriculaSelecionada) return;
+
+      if (fbCadastroMatricula) {
+        fbCadastroMatricula.textContent = '';
+        fbCadastroMatricula.className = 'small mt-1';
+      }
+
+      const ra    = (cadMatRAInput?.value || '').trim();
+      const turma = (cadMatTurmaInput?.value || '').trim();
+
+      if (!ra || !turma) {
+        if (fbCadastroMatricula) {
+          fbCadastroMatricula.textContent = 'Preencha RA e Turma para concluir o cadastro.';
+          fbCadastroMatricula.classList.add('text-danger');
+        }
+        return;
+      }
+
+      try {
+        // 1) Cria o aluno
+        const bodyAluno = JSON.stringify({
+          nome: matriculaSelecionada.nome,
+          email: matriculaSelecionada.email,
+          ra,
+          turma,
+          dataNascimento: matriculaSelecionada.dataNascimento
+        });
+
+        await apiFetch('/Alunos', {
+          method: 'POST',
+          body: bodyAluno
+        });
+
+        // 2) Marca a matrícula como Aprovada
+        const bodyResposta = JSON.stringify({
+          id: matriculaSelecionada.id,
+          aprovar: true,
+          observacao: null
+        });
+
+        await apiFetch('/Matriculas/responder', {
+          method: 'POST',
+          body: bodyResposta
+        });
+
+        // Remove da lista em memória e atualiza tabela
+        matriculasPendentes = matriculasPendentes.filter(m => m.id !== matriculaSelecionada.id);
+        matriculaSelecionada = null;
+
+        atualizarMatriculasPendentes();
+        atualizarFiltros();
+        atualizarListagens();
+
+        if (fbCadastroMatricula) {
+          fbCadastroMatricula.textContent = 'Aluno cadastrado com sucesso e matrícula aprovada.';
+          fbCadastroMatricula.classList.add('text-success');
+        }
+
+        setTimeout(() => {
+          if (modalCadastroAlunoMatricula) modalCadastroAlunoMatricula.hide();
+        }, 700);
+      } catch (err) {
+        console.error(err);
+        if (fbCadastroMatricula) {
+          fbCadastroMatricula.textContent = err.message || 'Erro ao cadastrar aluno a partir da matrícula.';
+          fbCadastroMatricula.classList.add('text-danger');
+        }
+      }
+    });
+  }
+
+
 
   // ================== CARREGAMENTO INICIAL ==================
   async function carregarDadosIniciais() {

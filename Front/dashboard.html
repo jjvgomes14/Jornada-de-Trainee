@@ -116,6 +116,7 @@
                   <th>Data de nascimento</th>
                   <th>Data da solicitação</th>
                   <th>Status</th>
+                  <th style="width:120px;">Ações</th>
                 </tr>
               </thead>
               <tbody id="tbodyMatriculasPendentesCadastro"></tbody>
@@ -270,6 +271,69 @@
       </div>
     </section>
   </main>
+
+  <!-- MODAL: Cadastrar aluno a partir de matrícula pendente -->
+  <div class="modal fade" id="modalCadastroAlunoMatricula" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Cadastrar aluno</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" id="cadMatId" />
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatNome">Nome</label>
+            <input type="text" id="cadMatNome"
+                  class="form-control form-control-sm"
+                  disabled />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatEmail">E-mail</label>
+            <input type="email" id="cadMatEmail"
+                  class="form-control form-control-sm"
+                  disabled />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatDataNasc">Data de nascimento</label>
+            <input type="date" id="cadMatDataNasc"
+                  class="form-control form-control-sm"
+                  disabled />
+          </div>
+
+          <hr class="my-3" />
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatRA">RA</label>
+            <input type="text" id="cadMatRA"
+                  class="form-control form-control-sm"
+                  placeholder="RA do aluno" />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatTurma">Turma</label>
+            <input type="text" id="cadMatTurma"
+                  class="form-control form-control-sm"
+                  placeholder="Turma (ex.: 3ºB)" />
+          </div>
+
+          <div id="fbCadastroMatricula" class="small mt-1"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="btnSalvarCadastroMatricula" class="btn btn-primary">
+            Cadastrar aluno
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- MODAL: troca de senha no primeiro acesso -->
   <div class="modal fade" id="modalTrocaSenha" tabindex="-1" aria-hidden="true">
