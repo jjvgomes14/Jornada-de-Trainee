@@ -1,20 +1,15 @@
+/* Transição suave quando muda o tema (claro/escuro) */
 body {
   transition: background-color 0.25s, color 0.25s;
 }
 
-/* Card do login */
-.login-caixa {
-  background: var(--bs-body-bg);
-  color: var(--bs-body-color);
+/* Caixa de login e cards com cantos levemente arredondados */
+.login-caixa,
+.card {
   border-radius: 12px;
 }
 
-#btnOlho { font-size: 1.1rem; }
-
-.card { border-radius: 12px; }
-
-.sec .table thead th { white-space: nowrap; }
-
-.d-none { display: none !important; }
-
-.toast { opacity: 1; }
+/* Cabeçalho das tabelas sem quebrar linha */
+.sec .table thead th {
+  white-space: nowrap;
+}

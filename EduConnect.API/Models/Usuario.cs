@@ -6,15 +6,16 @@ public class Usuario
 {
     public int Id { get; set; }
 
-    [Required]
-    public string Username { get; set; } = null!;
+    [Required(ErrorMessage = "O nome de usuário é obrigatório.")]
+    public string Username { get; set; } = string.Empty;
 
     [Required]
-    public string PasswordHash { get; set; } = null!;
+    public string PasswordHash { get; set; } = string.Empty;
 
+    // Pode ser: "Aluno", "Professor" ou "Administrador"
     [Required]
-    public string Role { get; set; } = UserRoles.Aluno;
+    public string Role { get; set; } = string.Empty;
 
-    // NOVO: indica se o usuário precisa trocar a senha no primeiro login
+    // Se true → no primeiro login deve alterar senha
     public bool PrimeiroAcesso { get; set; } = true;
 }

@@ -6,3 +6,4 @@ public static class UserRoles
     public const string Professor = "Professor";
     public const string Administrador = "Administrador";
 }
+

@@ -1,22 +1,24 @@
-﻿using EduConnect.Api.Models;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace EduConnect.Api.Models;
 
 public class Professor
 {
     public int Id { get; set; }
 
-    [Required]
-    public string Nome { get; set; } = null!;
+    [Required(ErrorMessage = "O nome é obrigatório.")]
+    public string Nome { get; set; } = string.Empty;
 
-    [Required, EmailAddress]
-    public string Email { get; set; } = null!;
+    [Required(ErrorMessage = "O e-mail é obrigatório.")]
+    [EmailAddress(ErrorMessage = "E-mail inválido.")]
+    public string Email { get; set; } = string.Empty;
 
+    [Required(ErrorMessage = "A disciplina é obrigatória.")]
+    public string Disciplina { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "A data de nascimento é obrigatória.")]
     public DateTime DataNascimento { get; set; }
 
-    [Required]
-    public string Disciplina { get; set; } = null!;
-
-    // NOVO: vínculo com usuário de login
+    // FK opcional para a tabela Usuarios (login)
     public int? UsuarioId { get; set; }
-    public Usuario? Usuario { get; set; }
 }

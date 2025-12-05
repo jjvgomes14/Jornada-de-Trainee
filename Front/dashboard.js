@@ -1,19 +1,40 @@
-// dashboard.js
 (function () {
   'use strict';
 
   const API_BASE_URL = 'http://localhost:5191/api';
 
-  let token = localStorage.getItem('authToken');
+  // Autenticação
+  const token = localStorage.getItem('authToken');
   if (!token) {
     window.location.href = 'index.html';
     return;
   }
 
+  const usuario = localStorage.getItem('usuarioLogado') || '';
+  const roleRaw = localStorage.getItem('tipoUsuario') || '';
+  const roleLower = roleRaw.toLowerCase();
   const mustChangePassword = localStorage.getItem('mustChangePassword') === '1';
 
-  async function apiFetch(path, options) {
-    const url = API_BASE_URL + path;
+  const isAdmin = roleLower === 'administrador';
+  const isProfessor = roleLower === 'professor';
+  const isAluno = roleLower === 'aluno';
+
+  // Estado em memória
+  const state = {
+    alunos: [],
+    professores: [],
+    turmas: [],
+    notasProfessor: [],
+    matriculasPendentes: [],
+    chartNotas: null,
+    calendar: null,
+    pessoaEdicao: null,       
+    alvoExclusao: null,       
+    matriculaCadastroAtual: null 
+  };
+
+  // Helpers
+  async function api(path, options) {
     options = options || {};
     const headers = Object.assign(
       {},
@@ -25,7 +46,7 @@
       headers['Content-Type'] = 'application/json';
     }
 
-    const resp = await fetch(url, {
+    const resp = await fetch(API_BASE_URL + path, {
       method: options.method || 'GET',
       headers,
       body: options.body
@@ -43,144 +64,564 @@
     return data;
   }
 
-  // ================== DADOS EM MEMÓRIA ==================
-  let alunos = [];
-  let professores = [];
-  let notasProfessor = [];
-  let turmas = [];
-  let matriculasPendentes = [];
-
-  // ================== INFO DO USUÁRIO ==================
-  const usuario = localStorage.getItem('usuarioLogado') || '';
-  const roleRaw = localStorage.getItem('tipoUsuario') || '';
-  const roleLower = roleRaw.toLowerCase();
-
-  const isAdmin = roleLower === 'administrador';
-  const isProfessor = roleLower === 'professor';
-  const isAluno = roleLower === 'aluno';
-
-  const nomeUsuario = document.getElementById('nomeUsuario');
-  if (nomeUsuario) nomeUsuario.textContent = usuario;
-
-  // ================== TEMA ==================
-  const body = document.body;
-  const switchTema = document.getElementById('switchTema');
-  const labelTema = document.getElementById('labelTema');
-  let tema = localStorage.getItem('tema') || 'light';
-  aplicarTema(tema);
-
-  if (switchTema) {
-    switchTema.addEventListener('change', function () {
-      const novo = switchTema.checked ? 'dark' : 'light';
-      aplicarTema(novo);
-      localStorage.setItem('tema', novo);
-    });
+  function setMsg(el, msg, tipo) {
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'small mt-1';
+    if (!msg) return;
+    if (tipo === 'erro') el.classList.add('text-danger');
+    if (tipo === 'ok') el.classList.add('text-success');
   }
 
-  function aplicarTema(nome) {
-    body.setAttribute('data-bs-theme', nome);
-    if (labelTema) labelTema.textContent = (nome === 'dark') ? 'Modo escuro' : 'Modo claro';
-    if (switchTema) switchTema.checked = (nome === 'dark');
+  // Média simples
+  function media(valores) {
+    if (!valores || !valores.length) return null;
+    const soma = valores.reduce((a, v) => a + v, 0);
+    return soma / valores.length;
   }
 
-  // ================== LOGOUT ==================
+  // Elementos Básicos
+  const nomeUsuarioSpan = document.getElementById('nomeUsuario');
   const btnSair = document.getElementById('btnSair');
+
+  if (nomeUsuarioSpan) nomeUsuarioSpan.textContent = usuario;
+
   if (btnSair) {
-    btnSair.addEventListener('click', function () {
+    btnSair.addEventListener('click', () => {
+      localStorage.removeItem('authToken');
       localStorage.removeItem('usuarioLogado');
       localStorage.removeItem('tipoUsuario');
-      localStorage.removeItem('authToken');
+      localStorage.removeItem('mustChangePassword');
       window.location.href = 'index.html';
     });
   }
 
-  // ================== MODAL TROCA DE SENHA (PRIMEIRO ACESSO) ==================
-  const modalTrocaSenhaEl = document.getElementById('modalTrocaSenha');
-  let modalTrocaSenha;
-  if (modalTrocaSenhaEl && window.bootstrap) {
-    modalTrocaSenha = new bootstrap.Modal(modalTrocaSenhaEl);
+  // Tema Claro/Escuro
+  const switchTema = document.getElementById('switchTema');
+  const labelTema = document.getElementById('labelTema');
+  let tema = localStorage.getItem('tema') || 'light';
+
+  function aplicarTema(nome) {
+    tema = nome;
+    document.body.setAttribute('data-bs-theme', nome);
+    if (switchTema) switchTema.checked = nome === 'dark';
+    if (labelTema) labelTema.textContent = nome === 'dark' ? 'Modo escuro' : 'Modo claro';
+    localStorage.setItem('tema', nome);
   }
 
-  if (mustChangePassword && modalTrocaSenha) {
-    setTimeout(() => {
-      modalTrocaSenha.show();
-    }, 500);
-  }
+  aplicarTema(tema);
 
-  const btnSalvarNovaSenha = document.getElementById('btnSalvarNovaSenha');
-  const fbTrocaSenha = document.getElementById('fbTrocaSenha');
-
-  if (btnSalvarNovaSenha) {
-    btnSalvarNovaSenha.addEventListener('click', async () => {
-      if (fbTrocaSenha) {
-        fbTrocaSenha.textContent = '';
-        fbTrocaSenha.className = 'small mt-1';
-      }
-
-      const nova = (document.getElementById('novaSenha')?.value || '').trim();
-      const conf = (document.getElementById('confirmaNovaSenha')?.value || '').trim();
-
-      if (!nova || nova.length < 6) {
-        fbTrocaSenha.textContent = 'A nova senha deve ter pelo menos 6 caracteres.';
-        fbTrocaSenha.classList.add('text-danger');
-        return;
-      }
-      if (nova !== conf) {
-        fbTrocaSenha.textContent = 'As senhas não coincidem.';
-        fbTrocaSenha.classList.add('text-danger');
-        return;
-      }
-
-      try {
-        await apiFetch('/Auth/alterar-senha-primeiro-acesso', {
-          method: 'POST',
-          body: JSON.stringify({ novaSenha: nova })
-        });
-
-        fbTrocaSenha.textContent = 'Senha alterada com sucesso!';
-        fbTrocaSenha.classList.add('text-success');
-
-        localStorage.setItem('mustChangePassword', '0');
-
-        setTimeout(() => {
-          modalTrocaSenha.hide();
-        }, 800);
-      } catch (err) {
-        console.error(err);
-        fbTrocaSenha.textContent = err.message || 'Erro ao alterar senha.';
-        fbTrocaSenha.classList.add('text-danger');
-      }
+  if (switchTema) {
+    switchTema.addEventListener('change', () => {
+      aplicarTema(switchTema.checked ? 'dark' : 'light');
     });
   }
 
-  // ================== MODAIS GERAIS (LISTAGEM + CALENDÁRIO) ==================
+  // Modal troca de senha no 1º acesso
+  const modalTrocaSenhaEl = document.getElementById('modalTrocaSenha');
+  const btnSalvarNovaSenha = document.getElementById('btnSalvarNovaSenha');
+  const fbTrocaSenha = document.getElementById('fbTrocaSenha');
+
+  let modalTrocaSenha = null;
+  if (modalTrocaSenhaEl && window.bootstrap) {
+    modalTrocaSenha = new bootstrap.Modal(modalTrocaSenhaEl, { backdrop: 'static', keyboard: false });
+  }
+
+  async function salvarNovaSenha() {
+    const nova = (document.getElementById('novaSenha')?.value || '').trim();
+    const conf = (document.getElementById('confirmaNovaSenha')?.value || '').trim();
+    setMsg(fbTrocaSenha, '');
+
+    if (!nova || nova.length < 6) {
+      setMsg(fbTrocaSenha, 'A nova senha deve ter pelo menos 6 caracteres.', 'erro');
+      return;
+    }
+    if (nova !== conf) {
+      setMsg(fbTrocaSenha, 'As senhas digitadas não conferem.', 'erro');
+      return;
+    }
+
+    try {
+      await api('/Auth/alterar-senha-primeiro-acesso', {
+        method: 'POST',
+        body: JSON.stringify({ novaSenha: nova })
+      });
+
+      localStorage.setItem('mustChangePassword', '0');
+      setMsg(fbTrocaSenha, 'Senha alterada com sucesso!', 'ok');
+      setTimeout(() => {
+        if (modalTrocaSenha) modalTrocaSenha.hide();
+      }, 800);
+    } catch (err) {
+      console.error(err);
+      setMsg(fbTrocaSenha, err.message || 'Erro ao alterar senha.', 'erro');
+    }
+  }
+
+  if (btnSalvarNovaSenha) {
+    btnSalvarNovaSenha.addEventListener('click', salvarNovaSenha);
+  }
+
+  if (mustChangePassword && modalTrocaSenha) {
+    modalTrocaSenha.show();
+  }
+
+  // Modais gerais
   const modalDetalhesEl = document.getElementById('modalDetalhes');
   const modalEditarPessoaEl = document.getElementById('modalEditarPessoa');
   const modalConfirmacaoEl = document.getElementById('modalConfirmacao');
   const modalEventoEl = document.getElementById('modalEvento');
+  const modalCadAlunoMatEl = document.getElementById('modalCadastroAlunoMatricula');
 
-  let modalDetalhes;
-  let modalEditarPessoa;
-  let modalConfirmacao;
-  let modalEvento;
+  const modalDetalhes = modalDetalhesEl && window.bootstrap ? new bootstrap.Modal(modalDetalhesEl) : null;
+  const modalEditarPessoa = modalEditarPessoaEl && window.bootstrap ? new bootstrap.Modal(modalEditarPessoaEl) : null;
+  const modalConfirmacao = modalConfirmacaoEl && window.bootstrap ? new bootstrap.Modal(modalConfirmacaoEl) : null;
+  const modalEvento = modalEventoEl && window.bootstrap ? new bootstrap.Modal(modalEventoEl) : null;
+  const modalCadAlunoMat = modalCadAlunoMatEl && window.bootstrap ? new bootstrap.Modal(modalCadAlunoMatEl) : null;
 
-  if (window.bootstrap) {
-    if (modalDetalhesEl) modalDetalhes = new bootstrap.Modal(modalDetalhesEl);
-    if (modalEditarPessoaEl) modalEditarPessoa = new bootstrap.Modal(modalEditarPessoaEl);
-    if (modalConfirmacaoEl) modalConfirmacao = new bootstrap.Modal(modalConfirmacaoEl);
-    if (modalEventoEl) modalEvento = new bootstrap.Modal(modalEventoEl);
+  // Permissões dos usuários
+  function configurarPermissoes() {
+    const secoesPermitidas = new Set(['sec-home', 'sec-listagem', 'sec-graficos']); 
+    if (isProfessor) {
+      secoesPermitidas.add('sec-calendario');
+      secoesPermitidas.add('sec-notas');
+    }
+    if (isAdmin) {
+      secoesPermitidas.add('sec-cadastro');
+    }
+    if (isAluno){
+      secoesPermitidas.add('sec-calendario');
+      secoesPermitidas.add('sec-notificacoes');
+    }
+
+    // Menu
+    document.querySelectorAll('#menu .nav-link').forEach(link => {
+      const sec = link.getAttribute('data-section');
+      const li = link.parentElement;
+      const podeVer = sec && secoesPermitidas.has(sec);
+      if (li) li.style.display = podeVer ? '' : 'none';
+    });
+
+    // Seções
+    document.querySelectorAll('main .sec').forEach(sec => {
+      const id = sec.id;
+      const podeVer = secoesPermitidas.has(id);
+      if (!podeVer) sec.classList.add('d-none');
+    });
+
+    // Colunas de ações (somente admin)
+    document.querySelectorAll('.th-acoes').forEach(th => {
+      th.classList.toggle('d-none', !isAdmin);
+    });
+
+    // Bloco de matrículas pendentes (apenas admin)
+    const blocoMat = document.getElementById('blocoMatriculasPendentes');
+    if (blocoMat) blocoMat.classList.toggle('d-none', !isAdmin);
+
+    // Botão adicionar evento (apenas professor/admin)
+    const btnAddEvento = document.getElementById('btnAddEvento');
+    if (btnAddEvento) btnAddEvento.classList.toggle('d-none', !(isProfessor || isAdmin));
+
+    // Filtro turma em gráficos (apenas admin)
+    const wrapFiltroTurmaGraficos = document.getElementById('wrapFiltroTurmaGraficos');
+    if (wrapFiltroTurmaGraficos) {
+      wrapFiltroTurmaGraficos.classList.toggle('d-none', !isAdmin);
+    }
   }
 
+  // ================== HOME ==================
+  const homeCards = document.getElementById('homeCards');
+
+  function criarCardHome(idSecao, titulo, descricao, icone) {
+    const col = document.createElement('div');
+    col.className = 'col-12 col-sm-6 col-lg-4';
+
+    col.innerHTML = `
+      <div class="card h-100 shadow-sm card-home" data-section="${idSecao}" role="button">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex align-items-center mb-2">
+            <div class="fs-4 me-2">${icone || '📄'}</div>
+            <h6 class="mb-0">${titulo}</h6>
+          </div>
+          <p class="small text-body-secondary mb-0 flex-grow-1">${descricao}</p>
+        </div>
+      </div>`;
+    return col;
+  }
+
+  function montarHome() {
+    if (!homeCards) return;
+    homeCards.innerHTML = '';
+
+    const items = [];
+
+    items.push({
+      idSecao: 'sec-listagem',
+      titulo: 'Alunos e Professores',
+      desc: 'Consulte os cadastros da escola.',
+      icon: '👥'
+    });
+
+    if (isAdmin) {
+      items.push({
+        idSecao: 'sec-cadastro',
+        titulo: 'Cadastro',
+        desc: 'Cadastre novos alunos ou professores e aprove solicitações de matrícula.',
+        icon: '📝'
+      });
+    }
+
+    items.push({
+      idSecao: 'sec-graficos',
+      titulo: 'Gráficos de desempenho',
+      desc: 'Visualize as médias por disciplina ou turma.',
+      icon: '📊'
+    });
+
+    if (!isAdmin){
+      items.push({
+        idSecao: 'sec-calendario',
+        titulo: 'Calendário escolar',
+        desc: 'Veja provas, eventos e lembretes.',
+        icon: '📅'
+      });
+    } 
+
+    if (isProfessor) {
+      items.push({
+        idSecao: 'sec-notas',
+        titulo: 'Notas',
+        desc: 'Lance e gerencie notas de seus alunos.',
+        icon: '✏️'
+      });
+    }
+
+    if (isAluno){
+      items.push({
+        idSecao: 'sec-notificacoes',
+        titulo: 'Notificações',
+        desc: 'Visualize os eventos criados pelos professores.',
+        icon: '🔔'
+      });
+    }
+
+    items.forEach(it => {
+      homeCards.appendChild(
+        criarCardHome(it.idSecao, it.titulo, it.desc, it.icon)
+      );
+    });
+
+    homeCards.addEventListener('click', e => {
+      const card = e.target.closest('.card-home');
+      if (!card) return;
+      const sec = card.getAttribute('data-section');
+      if (sec) mostrarSecao(sec);
+    });
+  }
+
+  // Navegação
+  const menuLinks = document.querySelectorAll('#menu .nav-link');
+
+  function mostrarSecao(idSecao) {
+    document.querySelectorAll('.sec').forEach(sec => {
+      sec.classList.toggle('d-none', sec.id !== idSecao);
+    });
+
+    menuLinks.forEach(link => {
+      const sec = link.getAttribute('data-section');
+      link.classList.toggle('active', sec === idSecao);
+    });
+
+    if (idSecao === 'sec-graficos') {
+      atualizarGraficos();
+    }
+    if (idSecao === 'sec-calendario') {
+      initCalendario();
+    }
+    if (idSecao === 'sec-notas') {
+      atualizarNotas();
+    }
+    if (idSecao === 'sec-cadastro' && isAdmin) {
+      atualizarMatriculasPendentes();
+    }
+  }
+
+  if (menuLinks.length) {
+    menuLinks.forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const sec = link.getAttribute('data-section');
+        if (sec) mostrarSecao(sec);
+      });
+    });
+  }
+
+  mostrarSecao('sec-home');
+
+  // Cadastro Aluno/Professor
+  const btnTipoAluno = document.getElementById('btnTipoAluno');
+  const btnTipoProfessor = document.getElementById('btnTipoProfessor');
+  const tituloCadastro = document.getElementById('tituloCadastro');
+  const grupoCadastroAluno = document.getElementById('grupoCadastroAluno');
+  const grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
+
+  const formCadastro = document.getElementById('formCadastro');
+  const cadNome = document.getElementById('cadNome');
+  const cadEmail = document.getElementById('cadEmail');
+  const cadRA = document.getElementById('cadRA');
+  const cadTurma = document.getElementById('cadTurma');
+  const cadDisc = document.getElementById('cadDisc');
+  const fbCadastro = document.getElementById('fbCadastro');
+
+  let tipoCadastroAtual = 'aluno';
+
+  function atualizarTipoCadastro(tipo) {
+    tipoCadastroAtual = tipo;
+    if (tipo === 'aluno') {
+      if (btnTipoAluno) btnTipoAluno.classList.replace('btn-outline-primary', 'btn-primary');
+      if (btnTipoProfessor) btnTipoProfessor.classList.replace('btn-primary', 'btn-outline-primary');
+      if (grupoCadastroAluno) grupoCadastroAluno.classList.remove('d-none');
+      if (grupoCadastroProfessor) grupoCadastroProfessor.classList.add('d-none');
+      if (tituloCadastro) tituloCadastro.textContent = 'Cadastrar Aluno';
+    } else {
+      if (btnTipoProfessor) btnTipoProfessor.classList.replace('btn-outline-primary', 'btn-primary');
+      if (btnTipoAluno) btnTipoAluno.classList.replace('btn-primary', 'btn-outline-primary');
+      if (grupoCadastroProfessor) grupoCadastroProfessor.classList.remove('d-none');
+      if (grupoCadastroAluno) grupoCadastroAluno.classList.add('d-none');
+      if (tituloCadastro) tituloCadastro.textContent = 'Cadastrar Professor';
+    }
+    setMsg(fbCadastro, '');
+  }
+
+  if (btnTipoAluno) {
+    btnTipoAluno.addEventListener('click', () => atualizarTipoCadastro('aluno'));
+  }
+  if (btnTipoProfessor) {
+    btnTipoProfessor.addEventListener('click', () => atualizarTipoCadastro('professor'));
+  }
+
+  async function salvarCadastro(e) {
+    e.preventDefault();
+    setMsg(fbCadastro, '');
+
+    const nome = (cadNome?.value || '').trim();
+    const email = (cadEmail?.value || '').trim();
+
+    if (!nome || !email) {
+      setMsg(fbCadastro, 'Informe nome e e-mail.', 'erro');
+      return;
+    }
+
+    try {
+      let novo = null;
+      if (tipoCadastroAtual === 'aluno') {
+        const ra = (cadRA?.value || '').trim();
+        const turma = (cadTurma?.value || '').trim();
+        if (!ra || !turma) {
+          setMsg(fbCadastro, 'Informe RA e turma para o aluno.', 'erro');
+          return;
+        }
+        novo = await api('/Alunos', {
+          method: 'POST',
+          body: JSON.stringify({ nome, email, ra, turma })
+        });
+        state.alunos.push(novo);
+      } else {
+        const disciplina = (cadDisc?.value || '').trim();
+        if (!disciplina) {
+          setMsg(fbCadastro, 'Selecione a disciplina do professor.', 'erro');
+          return;
+        }
+        novo = await api('/Professores', {
+          method: 'POST',
+          body: JSON.stringify({ nome, email, disciplina })
+        });
+        state.professores.push(novo);
+      }
+
+      if (formCadastro) formCadastro.reset();
+      atualizarListagem();
+      atualizarTurmasFiltros();
+      atualizarGraficos();
+      setMsg(fbCadastro, 'Cadastro salvo com sucesso.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setMsg(fbCadastro, err.message || 'Erro ao salvar cadastro.', 'erro');
+    }
+  }
+
+  if (formCadastro) {
+    formCadastro.addEventListener('submit', salvarCadastro);
+  }
+
+  // ==============LISTAGEM=============
+  const buscaNome = document.getElementById('buscaNome');
+  const selTurma = document.getElementById('selTurma');
+  const selDisciplina = document.getElementById('selDisciplina');
+  const filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
+  const filtroDiscWrap = document.getElementById('filtroDiscWrap');
+
+  const tabAlunosBtn = document.getElementById('tabAlunos');
+  const tabProfBtn = document.getElementById('tabProfessores');
+
+  const tbodyAlunos = document.getElementById('tbodyAlunos');
+  const tbodyProfessores = document.getElementById('tbodyProfessores');
+
+  let abaListagemAtual = 'alunos';
+
+  function atualizarTurmasFiltros() {
+    if (selTurma) {
+      const atual = selTurma.value || '__todas__';
+      let opts = '<option value="__todas__">Todas</option>';
+      state.turmas.forEach(t => opts += `<option${t === atual ? ' selected' : ''}>${t}</option>`);
+      selTurma.innerHTML = opts;
+    }
+
+    // Filtro de turma para notas
+    const selTurmaNotas = document.getElementById('selTurmaNotas');
+    if (selTurmaNotas) {
+      const atual2 = selTurmaNotas.value || '__selecione__';
+      let opts2 = '<option value="__selecione__">Selecione...</option>';
+      state.turmas.forEach(t => opts2 += `<option${t === atual2 ? ' selected' : ''}>${t}</option>`);
+      selTurmaNotas.innerHTML = opts2;
+    }
+
+    // Filtro de turma para gráficos (admin)
+    const selTurmaGraficos = document.getElementById('selTurmaGraficos');
+    if (selTurmaGraficos) {
+      const atual3 = selTurmaGraficos.value || '__todas__';
+      let opts3 = '<option value="__todas__">Todas</option>';
+      state.turmas.forEach(t => opts3 += `<option${t === atual3 ? ' selected' : ''}>${t}</option>`);
+      selTurmaGraficos.innerHTML = opts3;
+    }
+  }
+
+  function atualizarFiltroDisciplinas() {
+    if (!selDisciplina) return;
+    const atual = selDisciplina.value || '__todas__';
+    const disciplinas = Array.from(new Set(
+      state.professores
+        .map(p => p.disciplina)
+        .filter(Boolean)
+    ));
+    let opts = '<option value="__todas__">Todas</option>';
+    disciplinas.forEach(d => opts += `<option${d === atual ? ' selected' : ''}>${d}</option>`);
+    selDisciplina.innerHTML = opts;
+  }
+
+  function atualizarListagem() {
+    const termo = (buscaNome?.value || '').trim().toLowerCase();
+    const turmaSel = selTurma ? selTurma.value : '__todas__';
+    const discSel = selDisciplina ? selDisciplina.value : '__todas__';
+
+    if (abaListagemAtual === 'alunos' && tbodyAlunos) {
+      tbodyAlunos.innerHTML = '';
+      const lista = state.alunos.filter(a => {
+        const okNome = !termo || a.nome.toLowerCase().includes(termo);
+        const okTurma = turmaSel === '__todas__' || a.turma === turmaSel;
+        return okNome && okTurma;
+      });
+
+      if (!lista.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">Nenhum aluno encontrado.</td>`;
+        tbodyAlunos.appendChild(tr);
+      } else {
+        lista.forEach(a => {
+          const tr = document.createElement('tr');
+          let html = `
+            <td>${a.nome}</td>
+            <td>${a.email || '—'}</td>
+            <td>${a.turma || '—'}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-secondary" data-acao="detalhes" data-tipo="aluno" data-id="${a.id}">
+                Detalhes
+              </button>
+            </td>`;
+          if (isAdmin) {
+            html += `
+              <td>
+                <button class="btn btn-sm btn-outline-primary me-1" data-acao="editar" data-tipo="aluno" data-id="${a.id}">Editar</button>
+                <button class="btn btn-sm btn-outline-danger" data-acao="excluir" data-tipo="aluno" data-id="${a.id}">Excluir</button>
+              </td>`;
+          }
+          tr.innerHTML = html;
+          tbodyAlunos.appendChild(tr);
+        });
+      }
+    }
+
+    if (abaListagemAtual === 'professores' && tbodyProfessores) {
+      tbodyProfessores.innerHTML = '';
+      const listaP = state.professores.filter(p => {
+        const okNome = !termo || p.nome.toLowerCase().includes(termo);
+        const okDisc = discSel === '__todas__' || p.disciplina === discSel;
+        return okNome && okDisc;
+      });
+
+      if (!listaP.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">Nenhum professor encontrado.</td>`;
+        tbodyProfessores.appendChild(tr);
+      } else {
+        listaP.forEach(p => {
+          const tr = document.createElement('tr');
+          let html = `
+            <td>${p.nome}</td>
+            <td>${p.email || '—'}</td>
+            <td>${p.disciplina || '—'}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-secondary" data-acao="detalhes" data-tipo="professor" data-id="${p.id}">
+                Detalhes
+              </button>
+            </td>`;
+          if (isAdmin) {
+            html += `
+              <td>
+                <button class="btn btn-sm btn-outline-primary me-1" data-acao="editar" data-tipo="professor" data-id="${p.id}">Editar</button>
+                <button class="btn btn-sm btn-outline-danger" data-acao="excluir" data-tipo="professor" data-id="${p.id}">Excluir</button>
+              </td>`;
+          }
+          tr.innerHTML = html;
+          tbodyProfessores.appendChild(tr);
+        });
+      }
+    }
+  }
+
+  if (tabAlunosBtn) {
+    tabAlunosBtn.addEventListener('click', () => {
+      abaListagemAtual = 'alunos';
+      if (filtroTurmaWrap) filtroTurmaWrap.classList.remove('d-none');
+      if (filtroDiscWrap) filtroDiscWrap.classList.add('d-none');
+      atualizarListagem();
+    });
+  }
+
+  if (tabProfBtn) {
+    tabProfBtn.addEventListener('click', () => {
+      abaListagemAtual = 'professores';
+      if (filtroTurmaWrap) filtroTurmaWrap.classList.add('d-none');
+      if (filtroDiscWrap) filtroDiscWrap.classList.remove('d-none');
+      atualizarFiltroDisciplinas();
+      atualizarListagem();
+    });
+  }
+
+  if (buscaNome) buscaNome.addEventListener('input', atualizarListagem);
+  if (selTurma) selTurma.addEventListener('change', atualizarListagem);
+  if (selDisciplina) selDisciplina.addEventListener('change', atualizarListagem);
+
+  // ========= Handlers da listagem (detalhes/editar/excluir) =========
   const modalDetalhesTitulo = document.getElementById('modalDetalhesTitulo');
   const modalDetalhesConteudo = document.getElementById('modalDetalhesConteudo');
-
   const modalEditarPessoaTitulo = document.getElementById('modalEditarPessoaTitulo');
-  const edicaoPessoaIdInput = document.getElementById('edicaoPessoaId');
-  const edicaoNomeInput = document.getElementById('edicaoNome');
-  const edicaoEmailInput = document.getElementById('edicaoEmail');
-  const edicaoRAInput = document.getElementById('edicaoRA');
-  const edicaoTurmaInput = document.getElementById('edicaoTurma');
-  const edicaoDisciplinaInput = document.getElementById('edicaoDisciplina');
+  const edicaoPessoaId = document.getElementById('edicaoPessoaId');
+  const edicaoNome = document.getElementById('edicaoNome');
+  const edicaoEmail = document.getElementById('edicaoEmail');
+  const edicaoRA = document.getElementById('edicaoRA');
+  const edicaoTurma = document.getElementById('edicaoTurma');
+  const edicaoDisciplina = document.getElementById('edicaoDisciplina');
   const grupoEdicaoAluno = document.getElementById('grupoEdicaoAluno');
   const grupoEdicaoProfessor = document.getElementById('grupoEdicaoProfessor');
   const fbEdicaoPessoa = document.getElementById('fbEdicaoPessoa');
@@ -190,680 +631,174 @@
   const modalConfirmacaoMensagem = document.getElementById('modalConfirmacaoMensagem');
   const btnConfirmarExclusao = document.getElementById('btnConfirmarExclusao');
 
-  const eventoIdInput = document.getElementById('eventoId');
-  const eventoTituloInput = document.getElementById('eventoTitulo');
-  const eventoDataInicioInput = document.getElementById('eventoDataInicio');
-  const eventoDataFimInput = document.getElementById('eventoDataFim');
-  const fbEvento = document.getElementById('fbEvento');
-  const btnSalvarEvento = document.getElementById('btnSalvarEvento');
-  const btnExcluirEvento = document.getElementById('btnExcluirEvento');
+  function abrirDetalhes(tipo, id) {
+    if (!modalDetalhes || !modalDetalhesConteudo || !modalDetalhesTitulo) return;
 
-  let tipoEdicaoPessoa = null;
-  let confirmacaoContexto = null;
-  let eventoSelecionado = null;
+    let obj = null;
+    if (tipo === 'aluno') obj = state.alunos.find(a => a.id === id);
+    if (tipo === 'professor') obj = state.professores.find(p => p.id === id);
+    if (!obj) return;
 
-  // Modal de cadastro de aluno a partir da matrícula pendente
-  const modalCadastroAlunoMatriculaEl = document.getElementById('modalCadastroAlunoMatricula');
-  let modalCadastroAlunoMatricula;
-  if (window.bootstrap && modalCadastroAlunoMatriculaEl) {
-    modalCadastroAlunoMatricula = new bootstrap.Modal(modalCadastroAlunoMatriculaEl);
-  }
+    modalDetalhesTitulo.textContent = tipo === 'aluno' ? 'Detalhes do aluno' : 'Detalhes do professor';
 
-  const cadMatIdInput       = document.getElementById('cadMatId');
-  const cadMatNomeInput     = document.getElementById('cadMatNome');
-  const cadMatEmailInput    = document.getElementById('cadMatEmail');
-  const cadMatDataNascInput = document.getElementById('cadMatDataNasc');
-  const cadMatRAInput       = document.getElementById('cadMatRA');
-  const cadMatTurmaInput    = document.getElementById('cadMatTurma');
-  const fbCadastroMatricula = document.getElementById('fbCadastroMatricula');
-  const btnSalvarCadastroMatricula = document.getElementById('btnSalvarCadastroMatricula');
-
-  let matriculaSelecionada = null;
-
-  // ================== PERMISSÕES DE SEÇÕES ==================
-  function configurarVisibilidadeSecoes() {
-    const esconder = [];
-    if (isAdmin) {
-      esconder.push('sec-calendario', 'sec-notificacoes', 'sec-notas');
-    } else if (isProfessor) {
-      esconder.push(
-        'sec-cadastro',
-        'sec-notificacoes'
-      );
-    } else {
-      esconder.push('sec-cadastro', 'sec-notas');
-    }
-
-    esconder.forEach(id => {
-      const link = document.querySelector(`#menu .nav-link[data-section="${id}"]`);
-      if (link && link.parentElement) link.parentElement.style.display = 'none';
-      const sec = document.getElementById(id);
-      if (sec) sec.classList.add('d-none');
-    });
-
-    const ativo = document.querySelector('#menu .nav-link.active');
-    if (ativo && esconder.includes(ativo.getAttribute('data-section'))) {
-      ativo.classList.remove('active');
-      const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
-      if (homeLink) {
-        homeLink.classList.add('active');
-        document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
-        const sh = document.getElementById('sec-home');
-        if (sh) sh.classList.remove('d-none');
-      }
-    }
-
-    const wrapFiltroTurmaGraficos = document.getElementById('wrapFiltroTurmaGraficos');
-    if (wrapFiltroTurmaGraficos) {
-      wrapFiltroTurmaGraficos.classList.toggle('d-none', !isAdmin);
-    }
-
-    const blocoMatriculas = document.getElementById('blocoMatriculasPendentes');
-    if (blocoMatriculas) {
-      blocoMatriculas.classList.toggle('d-none', !isAdmin);
-    }
-  }
-
-  configurarVisibilidadeSecoes();
-
-  // ================== HOME ==================
-  function montarHome() {
-    const container = document.getElementById('homeCards');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const descricoes = {
-      'sec-listagem': 'Veja a listagem de alunos e professores cadastrados.',
-      'sec-cadastro': 'Cadastre novos alunos e professores no sistema.',
-      'sec-graficos': isAluno
-        ? 'Veja seus gráficos de desempenho (em breve).'
-        : (isProfessor ? 'Veja médias por turma da sua disciplina.' : 'Visualize o desempenho das turmas.'),
-      'sec-calendario': 'Consulte o calendário escolar e eventos.',
-      'sec-notas': 'Lance e gerencie as notas dos alunos.',
-      'sec-notificacoes': 'Veja notificações de eventos (opcional).'
-    };
-
-    document.querySelectorAll('#menu .nav-link').forEach(link => {
-      const secId = link.getAttribute('data-section');
-      if (secId === 'sec-home') return;
-      if (link.parentElement && link.parentElement.style.display === 'none') return;
-
-      const titulo = (link.textContent || '').trim();
-      const col = document.createElement('div');
-      col.className = 'col-12 col-md-6';
-      col.innerHTML = `
-        <div class="card h-100 shadow-sm">
-          <div class="card-body d-flex flex-column">
-            <h6 class="card-title mb-1">${titulo}</h6>
-            <p class="card-text small text-body-secondary mb-3">
-              ${descricoes[secId] || `Acesse a seção "${titulo}".`}
-            </p>
-            <button type="button" class="btn btn-sm btn-primary mt-auto" data-go-section="${secId}">Abrir</button>
-          </div>
-        </div>`;
-      container.appendChild(col);
-    });
-
-    container.addEventListener('click', e => {
-      const btn = e.target.closest('button[data-go-section]');
-      if (!btn) return;
-      const alvo = btn.getAttribute('data-go-section');
-      const link = document.querySelector(`#menu .nav-link[data-section="${alvo}"]`);
-      if (link) {
-        link.click();
-        const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
-        if (homeLink) homeLink.classList.remove('active');
-      }
-    });
-  }
-
-  montarHome();
-
-  // ================== NAVEGAÇÃO ==================
-  const linksMenu = document.querySelectorAll('#menu .nav-link');
-  let calendar;
-  let calendarRendered = false;
-
-  linksMenu.forEach(link => {
-    link.addEventListener('click', e => {
-      e.preventDefault();
-      linksMenu.forEach(l => l.classList.remove('active'));
-      link.classList.add('active');
-
-      const alvo = link.getAttribute('data-section');
-      document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
-      const sec = document.getElementById(alvo);
-      if (sec) sec.classList.remove('d-none');
-
-      if (alvo === 'sec-calendario' && calendar) {
-        setTimeout(() => {
-          if (!calendarRendered) {
-            calendar.render();
-            calendarRendered = true;
-          } else {
-            calendar.updateSize();
-          }
-        }, 0);
-      }
-
-      if (alvo === 'sec-graficos') {
-        atualizarGraficos();
-      }
-      if (alvo === 'sec-notas') {
-        atualizarNotas();
-      }
-      if (alvo === 'sec-cadastro') {
-        atualizarMatriculasPendentes();
-      }
-    });
-  });
-
-  (function () {
-    const homeLink = document.querySelector('#menu .nav-link[data-section="sec-home"]');
-    if (!homeLink) return;
-    document.querySelectorAll('.sec').forEach(s => s.classList.add('d-none'));
-    const home = document.getElementById('sec-home');
-    if (home) home.classList.remove('d-none');
-    linksMenu.forEach(l => l.classList.remove('active'));
-    homeLink.classList.add('active');
-  })();
-
-  // ================== CADASTRO ALUNO/PROFESSOR ==================
-  let tipoCadastroAtual = 'aluno';
-  const btnTipoAluno = document.getElementById('btnTipoAluno');
-  const btnTipoProfessor = document.getElementById('btnTipoProfessor');
-  const tituloCadastro = document.getElementById('tituloCadastro');
-  const grupoCadastroAluno = document.getElementById('grupoCadastroAluno');
-  const grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
-
-  function atualizarTipoCadastro() {
-    if (tituloCadastro) {
-      tituloCadastro.textContent = tipoCadastroAtual === 'aluno'
-        ? 'Cadastrar Aluno'
-        : 'Cadastrar Professor';
-    }
-    if (btnTipoAluno && btnTipoProfessor) {
-      if (tipoCadastroAtual === 'aluno') {
-        btnTipoAluno.classList.add('btn-primary', 'active');
-        btnTipoAluno.classList.remove('btn-outline-primary');
-        btnTipoProfessor.classList.remove('btn-primary', 'active');
-        btnTipoProfessor.classList.add('btn-outline-primary');
-      } else {
-        btnTipoProfessor.classList.add('btn-primary', 'active');
-        btnTipoProfessor.classList.remove('btn-outline-primary');
-        btnTipoAluno.classList.remove('btn-primary', 'active');
-        btnTipoAluno.classList.add('btn-outline-primary');
-      }
-    }
-    if (grupoCadastroAluno) grupoCadastroAluno.classList.toggle('d-none', tipoCadastroAtual !== 'aluno');
-    if (grupoCadastroProfessor) grupoCadastroProfessor.classList.toggle('d-none', tipoCadastroAtual !== 'professor');
-  }
-
-  if (btnTipoAluno) {
-    btnTipoAluno.addEventListener('click', () => {
-      tipoCadastroAtual = 'aluno';
-      atualizarTipoCadastro();
-    });
-  }
-  if (btnTipoProfessor) {
-    btnTipoProfessor.addEventListener('click', () => {
-      tipoCadastroAtual = 'professor';
-      atualizarTipoCadastro();
-    });
-  }
-  atualizarTipoCadastro();
-
-  const formCadastro = document.getElementById('formCadastro');
-  const fbCadastro = document.getElementById('fbCadastro');
-
-  function setFb(el, msg, erro) {
-    if (!el) return;
-    el.textContent = msg;
-    el.className = 'small mt-1 ' + (erro ? 'text-danger' : 'text-success');
-  }
-
-  if (formCadastro) {
-    formCadastro.addEventListener('submit', async e => {
-      e.preventDefault();
-      const nome  = (document.getElementById('cadNome').value || '').trim();
-      const email = (document.getElementById('cadEmail').value || '').trim();
-
-      if (!nome || !email) {
-        setFb(fbCadastro, 'Preencha nome e e-mail.', true);
-        return;
-      }
-
-      try {
-        if (tipoCadastroAtual === 'aluno') {
-          const ra    = (document.getElementById('cadRA').value || '').trim();
-          const turma = (document.getElementById('cadTurma').value || '').trim();
-          if (!ra || !turma) {
-            setFb(fbCadastro, 'Preencha RA e Turma para o aluno.', true);
-            return;
-          }
-
-          const body = JSON.stringify({ nome, email, ra, turma });
-          const novo = await apiFetch('/Alunos', {
-            method: 'POST',
-            body
-          });
-          alunos.push(novo);
-          setFb(fbCadastro, 'Aluno cadastrado com sucesso!', false);
-        } else {
-          const disc = (document.getElementById('cadDisc').value || '').trim();
-          if (!disc) {
-            setFb(fbCadastro, 'Selecione a disciplina do professor.', true);
-            return;
-          }
-
-          const body = JSON.stringify({ nome, email, disciplina: disc });
-          const novo = await apiFetch('/Professores', {
-            method: 'POST',
-            body
-          });
-          professores.push(novo);
-          setFb(fbCadastro, 'Professor cadastrado! Um e-mail será enviado com a disciplina atribuída.', false);
-        }
-
-        formCadastro.reset();
-        tipoCadastroAtual = 'aluno';
-        atualizarTipoCadastro();
-        atualizarFiltros();
-        atualizarListagens();
-        atualizarTurmasNotas();
-        atualizarGraficos();
-      } catch (err) {
-        console.error(err);
-        setFb(fbCadastro, err.message || 'Erro ao salvar cadastro.', true);
-      }
-    });
-  }
-
-  // ================== LISTAGEM ==================
-  const selTurma = document.getElementById('selTurma');
-  const selDisciplina = document.getElementById('selDisciplina');
-  const filtroTurmaWrap = document.getElementById('filtroTurmaWrap');
-  const filtroDiscWrap = document.getElementById('filtroDiscWrap');
-  const inpBuscaNome = document.getElementById('buscaNome');
-  const tbodyAlunos = document.getElementById('tbodyAlunos');
-  const tbodyProfessores = document.getElementById('tbodyProfessores');
-
-  if (selTurma) selTurma.addEventListener('change', atualizarListagens);
-  if (selDisciplina) selDisciplina.addEventListener('change', atualizarListagens);
-  if (inpBuscaNome) inpBuscaNome.addEventListener('input', atualizarListagens);
-
-  const tabsListagem = document.querySelectorAll('#tabsListagem .nav-link');
-  tabsListagem.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabsListagem.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show', 'active'));
-      const alvo = document.getElementById(tab.getAttribute('data-target'));
-      if (alvo) alvo.classList.add('show', 'active');
-
-      const alunosAtivo = tab.getAttribute('data-target') === 'tab-alunos';
-      if (filtroTurmaWrap) filtroTurmaWrap.classList.toggle('d-none', !alunosAtivo);
-      if (filtroDiscWrap) filtroDiscWrap.classList.toggle('d-none', alunosAtivo);
-
-      atualizarListagens();
-    });
-  });
-
-  if (isAdmin) {
-    document.querySelectorAll('.th-acoes').forEach(th => th.classList.remove('d-none'));
-  }
-
-  function atualizarFiltros() {
-    const setTurmas = new Set(alunos.map(a => (a.turma || '').trim()).filter(Boolean));
-    turmas = Array.from(setTurmas).sort();
-
-    if (selTurma) {
-      const atual = selTurma.value || '__todas__';
-      let opts = '<option value="__todas__">Todas</option>';
-      turmas.forEach(t => opts += `<option>${t}</option>`);
-      selTurma.innerHTML = opts;
-      selTurma.value = atual;
-    }
-
-    const setDisc = new Set(professores.map(p => (p.disciplina || p.disc || '').trim()).filter(Boolean));
-    const disciplinas = Array.from(setDisc).sort();
-
-    if (selDisciplina) {
-      const atual = selDisciplina.value || '__todas__';
-      let opts = '<option value="__todas__">Todas</option>';
-      disciplinas.forEach(d => opts += `<option>${d}</option>`);
-      selDisciplina.innerHTML = opts;
-      selDisciplina.value = atual;
-    }
-
-    const selTurmaGraficos = document.getElementById('selTurmaGraficos');
-    if (selTurmaGraficos) {
-      const atual = selTurmaGraficos.value || '__todas__';
-      let opts = '<option value="__todas__">Todas</option>';
-      turmas.forEach(t => opts += `<option>${t}</option>`);
-      selTurmaGraficos.innerHTML = opts;
-      selTurmaGraficos.value = atual;
-    }
-  }
-
-  function atualizarListagens() {
-    const termo = (inpBuscaNome && inpBuscaNome.value || '').toLowerCase().trim();
-
-    if (tbodyAlunos) {
-      const filtroT = selTurma ? (selTurma.value || '__todas__') : '__todas__';
-      tbodyAlunos.innerHTML = '';
-      alunos.forEach(a => {
-        if (termo && !(a.nome || '').toLowerCase().includes(termo)) return;
-        if (filtroT !== '__todas__' && (a.turma || '') !== filtroT) return;
-
-        const tr = document.createElement('tr');
-        const detalhes = `<button class="btn btn-sm btn-outline-info" data-acao="detalhes-aluno" data-id="${a.id}">Detalhes</button>`;
-        let acoes = '';
-        if (isAdmin) {
-          acoes = `
-            <button class="btn btn-sm btn-outline-secondary me-1" data-acao="edit-aluno" data-id="${a.id}">Editar</button>
-            <button class="btn btn-sm btn-outline-danger" data-acao="del-aluno" data-id="${a.id}">Excluir</button>`;
-        }
-        tr.innerHTML = `
-          <td>${a.nome}</td>
-          <td>${a.email}</td>
-          <td>${a.turma || '—'}</td>
-          <td>${detalhes}</td>
-          ${isAdmin ? `<td>${acoes}</td>` : ''}`;
-        tbodyAlunos.appendChild(tr);
-      });
-    }
-
-    if (tbodyProfessores) {
-      const filtroD = selDisciplina ? (selDisciplina.value || '__todas__') : '__todas__';
-      tbodyProfessores.innerHTML = '';
-      professores.forEach(p => {
-        const disc = p.disciplina || p.disc || '';
-        if (termo && !(p.nome || '').toLowerCase().includes(termo)) return;
-        if (filtroD !== '__todas__' && disc !== filtroD) return;
-
-        const tr = document.createElement('tr');
-        const detalhes = `<button class="btn btn-sm btn-outline-info" data-acao="detalhes-prof" data-id="${p.id}">Detalhes</button>`;
-        let acoes = '';
-        if (isAdmin) {
-          acoes = `
-            <button class="btn btn-sm btn-outline-secondary me-1" data-acao="edit-prof" data-id="${p.id}">Editar</button>
-            <button class="btn btn-sm btn-outline-danger" data-acao="del-prof" data-id="${p.id}">Excluir</button>`;
-        }
-        tr.innerHTML = `
-          <td>${p.nome}</td>
-          <td>${p.email}</td>
-          <td>${disc || '—'}</td>
-          <td>${detalhes}</td>
-          ${isAdmin ? `<td>${acoes}</td>` : ''}`;
-        tbodyProfessores.appendChild(tr);
-      });
-    }
-  }
-
-  // ========= Handlers da listagem (detalhes/editar/excluir) =========
-  function abrirModalDetalhesPessoa(tipo, pessoa) {
-    if (!modalDetalhes || !modalDetalhesTitulo || !modalDetalhesConteudo) return;
+    let html = `<strong>Nome:</strong> ${obj.nome}<br>`;
+    html += `<strong>E-mail:</strong> ${obj.email || '—'}<br>`;
 
     if (tipo === 'aluno') {
-      modalDetalhesTitulo.textContent = 'Detalhes do aluno';
-      modalDetalhesConteudo.innerHTML = `
-        <dl class="row mb-0">
-          <dt class="col-sm-3">Nome</dt><dd class="col-sm-9">${pessoa.nome}</dd>
-          <dt class="col-sm-3">E-mail</dt><dd class="col-sm-9">${pessoa.email}</dd>
-          <dt class="col-sm-3">RA</dt><dd class="col-sm-9">${pessoa.ra || '—'}</dd>
-          <dt class="col-sm-3">Turma</dt><dd class="col-sm-9">${pessoa.turma || '—'}</dd>
-        </dl>`;
+      html += `<strong>RA:</strong> ${obj.ra || '—'}<br>`;
+      html += `<strong>Turma:</strong> ${obj.turma || '—'}<br>`;
     } else {
-      const disc = pessoa.disciplina || pessoa.disc || '—';
-      modalDetalhesTitulo.textContent = 'Detalhes do professor';
-      modalDetalhesConteudo.innerHTML = `
-        <dl class="row mb-0">
-          <dt class="col-sm-3">Nome</dt><dd class="col-sm-9">${pessoa.nome}</dd>
-          <dt class="col-sm-3">E-mail</dt><dd class="col-sm-9">${pessoa.email}</dd>
-          <dt class="col-sm-3">Disciplina</dt><dd class="col-sm-9">${disc}</dd>
-        </dl>`;
+      html += `<strong>Disciplina:</strong> ${obj.disciplina || '—'}<br>`;
     }
 
+    modalDetalhesConteudo.innerHTML = html;
     modalDetalhes.show();
   }
 
-  function abrirModalEditarPessoa(tipo, pessoa) {
-    if (!modalEditarPessoa || !edicaoPessoaIdInput || !edicaoNomeInput || !edicaoEmailInput) return;
-    tipoEdicaoPessoa = tipo;
+  function abrirEdicao(tipo, id) {
+    if (!modalEditarPessoa || !modalEditarPessoaTitulo) return;
 
-    if (fbEdicaoPessoa) {
-      fbEdicaoPessoa.textContent = '';
-      fbEdicaoPessoa.className = 'small mt-2';
-    }
+    let obj = null;
+    if (tipo === 'aluno') obj = state.alunos.find(a => a.id === id);
+    if (tipo === 'professor') obj = state.professores.find(p => p.id === id);
+    if (!obj) return;
 
-    edicaoPessoaIdInput.value = pessoa.id;
-    edicaoNomeInput.value = pessoa.nome || '';
-    edicaoEmailInput.value = pessoa.email || '';
+    state.pessoaEdicao = { tipo, id };
+    if (edicaoPessoaId) edicaoPessoaId.value = String(id);
+    if (edicaoNome) edicaoNome.value = obj.nome || '';
+    if (edicaoEmail) edicaoEmail.value = obj.email || '';
 
     if (tipo === 'aluno') {
-      if (modalEditarPessoaTitulo) modalEditarPessoaTitulo.textContent = 'Editar aluno';
+      if (edicaoRA) edicaoRA.value = obj.ra || '';
+      if (edicaoTurma) edicaoTurma.value = obj.turma || '';
       if (grupoEdicaoAluno) grupoEdicaoAluno.classList.remove('d-none');
       if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.add('d-none');
-
-      if (edicaoRAInput) edicaoRAInput.value = pessoa.ra || '';
-      if (edicaoTurmaInput) edicaoTurmaInput.value = pessoa.turma || '';
+      modalEditarPessoaTitulo.textContent = 'Editar aluno';
     } else {
-      const disc = pessoa.disciplina || pessoa.disc || '';
-      if (modalEditarPessoaTitulo) modalEditarPessoaTitulo.textContent = 'Editar professor';
-      if (grupoEdicaoAluno) grupoEdicaoAluno.classList.add('d-none');
+      if (edicaoDisciplina) edicaoDisciplina.value = obj.disciplina || '';
       if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.remove('d-none');
-
-      if (edicaoDisciplinaInput) edicaoDisciplinaInput.value = disc;
+      if (grupoEdicaoAluno) grupoEdicaoAluno.classList.add('d-none');
+      modalEditarPessoaTitulo.textContent = 'Editar professor';
     }
 
+    setMsg(fbEdicaoPessoa, '');
     modalEditarPessoa.show();
   }
 
+  async function salvarEdicaoPessoa() {
+    if (!state.pessoaEdicao) return;
+    const { tipo, id } = state.pessoaEdicao;
+
+    const nome = (edicaoNome?.value || '').trim();
+    const email = (edicaoEmail?.value || '').trim();
+    if (!nome || !email) {
+      setMsg(fbEdicaoPessoa, 'Informe nome e e-mail.', 'erro');
+      return;
+    }
+
+    try {
+      if (tipo === 'aluno') {
+        const ra = (edicaoRA?.value || '').trim();
+        const turma = (edicaoTurma?.value || '').trim();
+        const body = { nome, email, ra, turma };
+        const atual = await api(`/Alunos/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        });
+        const idx = state.alunos.findIndex(a => a.id === id);
+        if (idx >= 0) state.alunos[idx] = atual;
+      } else {
+        const disciplina = (edicaoDisciplina?.value || '').trim();
+        const body = { nome, email, disciplina };
+        const atualP = await api(`/Professores/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        });
+        const idxP = state.professores.findIndex(p => p.id === id);
+        if (idxP >= 0) state.professores[idxP] = atualP;
+      }
+
+      setMsg(fbEdicaoPessoa, 'Registro atualizado com sucesso.', 'ok');
+      atualizarListagem();
+      atualizarTurmasFiltros();
+      atualizarFiltroDisciplinas();
+      setTimeout(() => modalEditarPessoa && modalEditarPessoa.hide(), 600);
+    } catch (err) {
+      console.error(err);
+      setMsg(fbEdicaoPessoa, err.message || 'Erro ao atualizar registro.', 'erro');
+    }
+  }
+
   if (btnSalvarEdicaoPessoa) {
-    btnSalvarEdicaoPessoa.addEventListener('click', async () => {
-      if (!tipoEdicaoPessoa || !edicaoPessoaIdInput) return;
+    btnSalvarEdicaoPessoa.addEventListener('click', salvarEdicaoPessoa);
+  }
 
-      const id = parseInt(edicaoPessoaIdInput.value, 10);
-      const nome = (edicaoNomeInput?.value || '').trim();
-      const email = (edicaoEmailInput?.value || '').trim();
+  function abrirConfirmacaoExclusao(tipo, id) {
+    if (!modalConfirmacao || !modalConfirmacaoMensagem || !modalConfirmacaoTitulo) return;
+    state.alvoExclusao = { tipo, id };
+    const obj = tipo === 'aluno'
+      ? state.alunos.find(a => a.id === id)
+      : state.professores.find(p => p.id === id);
 
-      if (fbEdicaoPessoa) {
-        fbEdicaoPessoa.textContent = '';
-        fbEdicaoPessoa.className = 'small mt-2';
+    modalConfirmacaoTitulo.textContent = 'Confirmar exclusão';
+    modalConfirmacaoMensagem.textContent = `Tem certeza que deseja excluir "${obj?.nome || ''}"? Esta ação não poderá ser desfeita.`;
+    modalConfirmacao.show();
+  }
+
+  async function efetivarExclusao() {
+    if (!state.alvoExclusao) return;
+    const { tipo, id } = state.alvoExclusao;
+    try {
+      if (tipo === 'aluno') {
+        await api(`/Alunos/${id}`, { method: 'DELETE' });
+        state.alunos = state.alunos.filter(a => a.id !== id);
+      } else {
+        await api(`/Professores/${id}`, { method: 'DELETE' });
+        state.professores = state.professores.filter(p => p.id !== id);
       }
-
-      if (!nome || !email) {
-        if (fbEdicaoPessoa) {
-          fbEdicaoPessoa.textContent = 'Preencha nome e e-mail.';
-          fbEdicaoPessoa.classList.add('text-danger');
-        }
-        return;
-      }
-
-      try {
-        if (tipoEdicaoPessoa === 'aluno') {
-          const ra = (edicaoRAInput?.value || '').trim();
-          const turma = (edicaoTurmaInput?.value || '').trim();
-          if (!ra || !turma) {
-            if (fbEdicaoPessoa) {
-              fbEdicaoPessoa.textContent = 'Preencha RA e Turma.';
-              fbEdicaoPessoa.classList.add('text-danger');
-            }
-            return;
-          }
-
-          const payload = { id, nome, email, turma, ra };
-          await apiFetch(`/Alunos/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(payload)
-          });
-
-          const idx = alunos.findIndex(a => a.id === id);
-          if (idx >= 0) Object.assign(alunos[idx], payload);
-
-          atualizarListagens();
-          atualizarFiltros();
-          atualizarTurmasNotas();
-          atualizarGraficos();
-        } else {
-          const disciplina = (edicaoDisciplinaInput?.value || '').trim();
-          if (!disciplina) {
-            if (fbEdicaoPessoa) {
-              fbEdicaoPessoa.textContent = 'Informe a disciplina.';
-              fbEdicaoPessoa.classList.add('text-danger');
-            }
-            return;
-          }
-
-          const payload = { id, nome, email, disciplina };
-          await apiFetch(`/Professores/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(payload)
-          });
-
-          const idx = professores.findIndex(p => p.id === id);
-          if (idx >= 0) {
-            professores[idx].nome = nome;
-            professores[idx].email = email;
-            professores[idx].disciplina = disciplina;
-          }
-
-          atualizarListagens();
-          atualizarFiltros();
-        }
-
-        if (fbEdicaoPessoa) {
-          fbEdicaoPessoa.textContent = 'Alterações salvas com sucesso.';
-          fbEdicaoPessoa.classList.add('text-success');
-        }
-
-        setTimeout(() => {
-          if (modalEditarPessoa) modalEditarPessoa.hide();
-        }, 500);
-      } catch (err) {
-        console.error(err);
-        if (fbEdicaoPessoa) {
-          fbEdicaoPessoa.textContent = err.message || 'Erro ao salvar alterações.';
-          fbEdicaoPessoa.classList.add('text-danger');
-        }
-      }
-    });
+      atualizarListagem();
+      atualizarTurmasFiltros();
+      atualizarFiltroDisciplinas();
+      modalConfirmacao && modalConfirmacao.hide();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Erro ao excluir registro.');
+    }
   }
 
   if (btnConfirmarExclusao) {
-    btnConfirmarExclusao.addEventListener('click', async () => {
-      if (!confirmacaoContexto) return;
-
-      const ctx = confirmacaoContexto;
-      confirmacaoContexto = null;
-
-      try {
-        if (ctx.tipo === 'aluno') {
-          await apiFetch(`/Alunos/${ctx.id}`, { method: 'DELETE' });
-          alunos = alunos.filter(a => a.id !== ctx.id);
-          atualizarListagens();
-          atualizarFiltros();
-          atualizarTurmasNotas();
-          atualizarGraficos();
-        } else if (ctx.tipo === 'professor') {
-          await apiFetch(`/Professores/${ctx.id}`, { method: 'DELETE' });
-          professores = professores.filter(p => p.id !== ctx.id);
-          atualizarListagens();
-          atualizarFiltros();
-        }
-      } catch (err) {
-        console.error(err);
-        alert(err.message || 'Erro ao realizar exclusão.');
-      } finally {
-        if (modalConfirmacao) modalConfirmacao.hide();
-      }
-    });
+    btnConfirmarExclusao.addEventListener('click', efetivarExclusao);
   }
 
-  if (tbodyAlunos) {
-    tbodyAlunos.addEventListener('click', async e => {
-      const btn = e.target.closest('button[data-acao]');
+  function anexarHandlersListagem(tbody, tipo) {
+    if (!tbody) return;
+    tbody.addEventListener('click', e => {
+      const btn = e.target.closest('button');
       if (!btn) return;
-      const acao = btn.dataset.acao;
-      const id = parseInt(btn.dataset.id, 10);
-      if (!id) return;
+      const acao = btn.getAttribute('data-acao');
+      const id = parseInt(btn.getAttribute('data-id') || '0', 10);
+      const tipoBtn = btn.getAttribute('data-tipo') || tipo;
 
-      const aluno = alunos.find(a => a.id === id);
-      if (!aluno) return;
+      if (!acao || !id) return;
 
-      if (acao === 'detalhes-aluno') {
-        abrirModalDetalhesPessoa('aluno', aluno);
+      if (acao === 'detalhes') {
+        abrirDetalhes(tipoBtn, id);
       }
-
-      if (acao === 'edit-aluno') {
-        if (!isAdmin) return;
-        abrirModalEditarPessoa('aluno', aluno);
+      if (acao === 'editar' && isAdmin) {
+        abrirEdicao(tipoBtn, id);
       }
-
-      if (acao === 'del-aluno') {
-        if (!isAdmin || !modalConfirmacaoTitulo || !modalConfirmacaoMensagem || !modalConfirmacao) return;
-        confirmacaoContexto = { tipo: 'aluno', id: aluno.id };
-        modalConfirmacaoTitulo.textContent = 'Excluir aluno';
-        modalConfirmacaoMensagem.textContent = `Tem certeza que deseja excluir o aluno "${aluno.nome}"? Esta ação não poderá ser desfeita.`;
-        modalConfirmacao.show();
+      if (acao === 'excluir' && isAdmin) {
+        abrirConfirmacaoExclusao(tipoBtn, id);
       }
     });
   }
 
-  if (tbodyProfessores) {
-    tbodyProfessores.addEventListener('click', async e => {
-      const btn = e.target.closest('button[data-acao]');
-      if (!btn) return;
-      const acao = btn.dataset.acao;
-      const id = parseInt(btn.dataset.id, 10);
-      if (!id) return;
-
-      const prof = professores.find(p => p.id === id);
-      if (!prof) return;
-
-      if (acao === 'detalhes-prof') {
-        abrirModalDetalhesPessoa('professor', prof);
-      }
-
-      if (acao === 'edit-prof') {
-        if (!isAdmin) return;
-        abrirModalEditarPessoa('professor', prof);
-      }
-
-      if (acao === 'del-prof') {
-        if (!isAdmin || !modalConfirmacaoTitulo || !modalConfirmacaoMensagem || !modalConfirmacao) return;
-        confirmacaoContexto = { tipo: 'professor', id: prof.id };
-        modalConfirmacaoTitulo.textContent = 'Excluir professor';
-        modalConfirmacaoMensagem.textContent = `Tem certeza que deseja excluir o professor "${prof.nome}"? Esta ação não poderá ser desfeita.`;
-        modalConfirmacao.show();
-      }
-    });
-  }
+  anexarHandlersListagem(tbodyAlunos, 'aluno');
+  anexarHandlersListagem(tbodyProfessores, 'professor');
 
   // ================== NOTAS (PROFESSOR) ==================
   const selTurmaNotas = document.getElementById('selTurmaNotas');
   const tbodyNotas = document.getElementById('tbodyNotas');
-
-  function atualizarTurmasNotas() {
-    if (!selTurmaNotas) return;
-    const atual = selTurmaNotas.value || '__selecione__';
-    let opts = '<option value="__selecione__">Selecione...</option>';
-    turmas.forEach(t => opts += `<option>${t}</option>`);
-    selTurmaNotas.innerHTML = opts;
-    selTurmaNotas.value = atual;
-  }
-
-  if (selTurmaNotas) {
-    selTurmaNotas.addEventListener('change', atualizarNotas);
-  }
-
-  function media(array) {
-    if (!array || !array.length) return null;
-    const s = array.reduce((acc, v) => acc + v, 0);
-    return s / array.length;
-  }
 
   function atualizarNotas() {
     if (!tbodyNotas) return;
@@ -872,7 +807,7 @@
 
     if (!isProfessor) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
         Somente professores podem lançar notas.
       </td>`;
       tbodyNotas.appendChild(tr);
@@ -881,17 +816,17 @@
 
     if (turma === '__selecione__') {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
         Selecione uma turma para lançar notas.
       </td>`;
       tbodyNotas.appendChild(tr);
       return;
     }
 
-    const alunosTurma = alunos.filter(a => a.turma === turma);
+    const alunosTurma = state.alunos.filter(a => a.turma === turma);
     if (!alunosTurma.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
+      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
         Nenhum aluno encontrado nesta turma.
       </td>`;
       tbodyNotas.appendChild(tr);
@@ -899,15 +834,16 @@
     }
 
     alunosTurma.forEach(a => {
-      const notasAluno = notasProfessor.filter(n => n.alunoId === a.id);
+      const notasAluno = state.notasProfessor.filter(n => n.alunoId === a.id);
       const chips = notasAluno.map(n => `
         <span class="badge text-bg-secondary me-1 mb-1">
           ${Number(n.valor).toFixed(1)}
           <button type="button"
                   class="btn btn-sm btn-link text-white p-0 ms-1"
                   data-acao="rem-nota"
-                  data-id="${n.id}"
-                  title="Remover">×</button>
+                  data-id="${n.id}">
+            ×
+          </button>
         </span>`).join('') || '<span class="text-body-secondary">— sem notas —</span>';
 
       const mediaAluno = media(notasAluno.map(n => Number(n.valor)));
@@ -915,11 +851,9 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${a.nome}</td>
-        <td>${a.ra}</td>
-        <td>${a.turma || '—'}</td>
-        <td>${chips}</td>
         <td>
-          <div class="input-group input-group-sm" style="max-width:180px;">
+          ${chips}
+          <div class="input-group input-group-sm mt-2" style="max-width:180px;">
             <input type="number" class="form-control form-control-sm"
                    min="0" max="10" step="0.1"
                    placeholder="Ex.: 7.5"
@@ -935,28 +869,33 @@
     });
   }
 
+  if (selTurmaNotas) {
+    selTurmaNotas.addEventListener('change', atualizarNotas);
+  }
+
   if (tbodyNotas) {
     tbodyNotas.addEventListener('click', async e => {
       const btn = e.target.closest('button');
-      if (!btn || !btn.dataset.acao) return;
-      const acao = btn.dataset.acao;
+      if (!btn) return;
+      const acao = btn.getAttribute('data-acao');
 
       if (acao === 'add-nota') {
         if (!isProfessor) return;
+        const alunoId = parseInt(btn.getAttribute('data-aluno-id') || '0', 10);
+        const inp = tbodyNotas.querySelector(`input[data-aluno-id="${alunoId}"]`);
+        if (!alunoId || !inp) return;
 
-        const alunoId = parseInt(btn.dataset.alunoId, 10);
-        const inp = tbodyNotas.querySelector(`input[data-acao="nova-nota-input"][data-aluno-id="${alunoId}"]`);
-        const val = parseFloat((inp && inp.value || '').replace(',', '.'));
-        if (isNaN(val) || val < 0 || val > 10) {
-          alert('Informe uma nota válida entre 0 e 10.');
+        const valor = parseFloat(inp.value.replace(',', '.'));
+        if (Number.isNaN(valor) || valor < 0 || valor > 10) {
+          alert('Informe uma nota entre 0 e 10.');
           return;
         }
 
         try {
-          const body = JSON.stringify({ alunoId, valor: val });
-          const nova = await apiFetch('/Notas', { method: 'POST', body });
-          notasProfessor.push(nova);
-          if (inp) inp.value = '';
+          const body = JSON.stringify({ alunoId, valor });
+          const nova = await api('/Notas', { method: 'POST', body });
+          state.notasProfessor.push(nova);
+          inp.value = '';
           atualizarNotas();
           atualizarGraficos();
         } catch (err) {
@@ -967,12 +906,12 @@
 
       if (acao === 'rem-nota') {
         if (!isProfessor) return;
-        const id = parseInt(btn.dataset.id, 10);
-        if (!confirm('Remover esta nota?')) return;
+        const id = parseInt(btn.getAttribute('data-id') || '0', 10);
+        if (!id || !confirm('Remover esta nota?')) return;
 
         try {
-          await apiFetch(`/Notas/${id}`, { method: 'DELETE' });
-          notasProfessor = notasProfessor.filter(n => n.id !== id);
+          await api(`/Notas/${id}`, { method: 'DELETE' });
+          state.notasProfessor = state.notasProfessor.filter(n => n.id !== id);
           atualizarNotas();
           atualizarGraficos();
         } catch (err) {
@@ -984,549 +923,420 @@
   }
 
   // ================== GRÁFICOS ==================
-  let chartNotas;
+  const chartCanvas = document.getElementById('chartNotas');
+  const grafMsg = document.getElementById('grafMsg');
+  const tituloGraficos = document.getElementById('tituloGraficos');
+  const subtituloGraficos = document.getElementById('subtituloGraficos');
+  const selTurmaGraficos = document.getElementById('selTurmaGraficos');
 
   async function atualizarGraficos() {
-  const canvas = document.getElementById('chartNotas');
-  const msg = document.getElementById('grafMsg');
-  const titulo = document.getElementById('tituloGraficos');
-  const subtitulo = document.getElementById('subtituloGraficos');
-  const selTurmaGraficos = document.getElementById('selTurmaGraficos');
+    if (!chartCanvas) return;
 
-  if (!canvas) return;
-  if (chartNotas) {
-    chartNotas.destroy();
-    chartNotas = null;
-  }
-  if (msg) msg.textContent = '';
-  if (subtitulo) subtitulo.textContent = '';
-
-  let labels = [];
-  let dados = [];
-  let tipo = 'bar';           // sempre gráfico de colunas
-  let labelDataset = '';
-
-  try {
-    // ===== GRÁFICO DO ALUNO =====
-    if (isAluno) {
-      if (titulo) titulo.textContent = 'Médias por disciplina (suas notas)';
-
-      // Descobre o aluno logado
-      const aluno = await apiFetch('/Alunos/me');
-      if (!aluno || !aluno.id) {
-        if (msg) msg.textContent = 'Não foi possível identificar o aluno logado para o gráfico.';
-        return;
-      }
-
-      // Usa o endpoint de gráfico do aluno
-      const resp = await apiFetch(`/Notas/grafico-aluno/${aluno.id}`);
-      const dadosApi = resp || [];
-      if (!dadosApi.length) {
-        if (msg) msg.textContent = 'Ainda não há notas lançadas para você.';
-        return;
-      }
-
-      labels = dadosApi.map(x => x.disciplina);
-      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
-      tipo = 'bar';
-      labelDataset = 'Média por disciplina';
-      if (subtitulo) {
-        subtitulo.textContent = 'Cada coluna representa a sua média em cada disciplina.';
-      }
+    if (state.chartNotas) {
+      state.chartNotas.destroy();
+      state.chartNotas = null;
     }
+    setMsg(grafMsg, '');
 
-    // ===== GRÁFICO DO PROFESSOR =====
-    if (isProfessor) {
-      if (titulo) titulo.textContent = 'Médias por turma (sua disciplina)';
-      const resp = await apiFetch('/Notas/grafico-professor');
-      const dadosApi = resp || [];
-      if (!dadosApi.length) {
-        if (msg) msg.textContent = 'Ainda não há notas lançadas na sua disciplina.';
-        return;
+    try {
+      let labels = [];
+      let valores = [];
+      let titulo = 'Gráficos de desempenho';
+      let subtitulo = '';
+
+      if (isAluno) {
+        titulo = 'Médias por disciplina (suas notas)';
+        const aluno = await api('/Alunos/me');
+        if (!aluno || !aluno.id) {
+          setMsg(grafMsg, 'Não foi possível identificar o aluno logado para o gráfico.', 'erro');
+          return;
+        }
+        const dados = await api(`/Notas/grafico-aluno/${aluno.id}`) || [];
+        if (!dados.length) {
+          setMsg(grafMsg, 'Ainda não há notas lançadas para você.', 'erro');
+          return;
+        }
+        labels = dados.map(d => d.disciplina || '—');
+        valores = dados.map(d => Number(d.media || d.valor || 0));
+      } else if (isProfessor) {
+        titulo = 'Médias por turma (suas turmas)';
+        const dados = await api('/Notas/grafico-professor') || [];
+        if (!dados.length) {
+          setMsg(grafMsg, 'Ainda não há notas lançadas para suas turmas.', 'erro');
+          return;
+        }
+        labels = dados.map(d => d.turma || '—');
+        valores = dados.map(d => Number(d.media || d.valor || 0));
+      } else if (isAdmin) {
+        titulo = 'Médias por disciplina (turma selecionada)';
+        const turma = selTurmaGraficos ? (selTurmaGraficos.value || '__todas__') : '__todas__';
+        if (!state.turmas.length) {
+          setMsg(grafMsg, 'Nenhuma turma cadastrada para gerar gráficos.', 'erro');
+          return;
+        }
+        if (turma === '__todas__') {
+          setMsg(grafMsg, 'Selecione uma turma para ver as médias por disciplina.', 'erro');
+          return;
+        }
+        subtitulo = `Turma: ${turma}`;
+        const dados = await api(`/Notas/grafico-admin?turma=${encodeURIComponent(turma)}`) || [];
+        if (!dados.length) {
+          setMsg(grafMsg, 'Ainda não há notas lançadas para esta turma.', 'erro');
+          return;
+        }
+        labels = dados.map(d => d.disciplina || '—');
+        valores = dados.map(d => Number(d.media || d.valor || 0));
       }
 
-      labels = dadosApi.map(x => x.turma);
-      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
-      tipo = 'bar'; // agora em colunas
-      labelDataset = 'Média das turmas';
-      if (subtitulo) {
-        subtitulo.textContent = 'Cada coluna representa a média da turma na sua disciplina.';
-      }
-    }
+      if (tituloGraficos) tituloGraficos.textContent = titulo;
+      if (subtituloGraficos) subtituloGraficos.textContent = subtitulo;
 
-    // ===== GRÁFICO DO ADMIN =====
-    if (isAdmin) {
-      if (!turmas.length) {
-        if (msg) msg.textContent = 'Nenhuma turma cadastrada.';
-        if (titulo) titulo.textContent = 'Gráficos de Desempenho';
-        return;
-      }
-
-      let turmaSelecionada =
-        (selTurmaGraficos && selTurmaGraficos.value && selTurmaGraficos.value !== '__todas__')
-          ? selTurmaGraficos.value
-          : turmas[0];
-
-      if (titulo) titulo.textContent = `Desempenho da turma ${turmaSelecionada}`;
-      const resp = await apiFetch(`/Notas/grafico-admin?turma=${encodeURIComponent(turmaSelecionada)}`);
-      const dadosApi = resp || [];
-      if (!dadosApi.length) {
-        if (msg) msg.textContent = 'Ainda não há notas lançadas para essa turma.';
-        return;
-      }
-
-      labels = dadosApi.map(x => x.disciplina);
-      dados  = dadosApi.map(x => Number(x.media).toFixed(2));
-      tipo = 'bar';
-      labelDataset = 'Média por disciplina';
-      if (subtitulo) {
-        subtitulo.textContent = 'Cada coluna representa a média da turma em cada disciplina.';
-      }
-    }
-
-    if (!labels.length) {
-      if (msg) msg.textContent = 'Sem dados para exibir.';
-      return;
-    }
-
-    // Aqui estava o erro antigo: agora usamos "tipo"
-    chartNotas = new Chart(canvas, {
-      type: tipo,
-      data: {
-        labels,
-        datasets: [{
-          label: labelDataset,
-          data: dados
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true,
-            suggestedMax: 10
+      const ctx = chartCanvas.getContext('2d');
+      state.chartNotas = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Média',
+            data: valores
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              suggestedMax: 10
+            }
           }
         }
-      }
-    });
-
-    if (msg && !msg.textContent) {
-      msg.textContent = 'Passe o mouse sobre as colunas para ver os valores.';
+      });
+    } catch (err) {
+      console.error(err);
+      setMsg(grafMsg, err.message || 'Erro ao carregar gráficos.', 'erro');
     }
-  } catch (err) {
-    console.error(err);
-    if (msg) msg.textContent = err.message || 'Erro ao carregar dados do gráfico.';
   }
-}
 
-
-  const selTurmaGraficos = document.getElementById('selTurmaGraficos');
-  if (selTurmaGraficos) {
+  if (selTurmaGraficos && isAdmin) {
     selTurmaGraficos.addEventListener('change', atualizarGraficos);
   }
 
   // ================== CALENDÁRIO ==================
-  const calEl = document.getElementById('calendario');
+  const calendarioEl = document.getElementById('calendario');
+  const btnAddEvento = document.getElementById('btnAddEvento');
+  const eventoId = document.getElementById('eventoId');
+  const eventoTitulo = document.getElementById('eventoTitulo');
+  const eventoDataInicio = document.getElementById('eventoDataInicio');
+  const eventoDataFim = document.getElementById('eventoDataFim');
+  const fbEvento = document.getElementById('fbEvento');
+  const btnSalvarEvento = document.getElementById('btnSalvarEvento');
+  const btnExcluirEvento = document.getElementById('btnExcluirEvento');
 
-  function limparFormularioEvento() {
-    if (eventoIdInput) eventoIdInput.value = '';
-    if (eventoTituloInput) eventoTituloInput.value = '';
-    if (eventoDataInicioInput) eventoDataInicioInput.value = '';
-    if (eventoDataFimInput) eventoDataFimInput.value = '';
-    if (fbEvento) {
-      fbEvento.textContent = '';
-      fbEvento.className = 'small mt-1';
-    }
-  }
-
-  function abrirModalEventoCriar(dataDefault) {
+  function abrirModalEvento(valorInicial) {
     if (!modalEvento) return;
-    limparFormularioEvento();
+    if (eventoId) eventoId.value = valorInicial && valorInicial.id ? String(valorInicial.id) : '';
+    if (eventoTitulo) eventoTitulo.value = valorInicial?.titulo || '';
+    if (eventoDataInicio) eventoDataInicio.value = valorInicial?.dataInicio || '';
+    if (eventoDataFim) eventoDataFim.value = valorInicial?.dataFim || '';
+    if (btnExcluirEvento) {
+      btnExcluirEvento.classList.toggle('d-none', !valorInicial || !valorInicial.id);
+    }
+    setMsg(fbEvento, '');
+    modalEvento.show();
+  }
 
-    const tituloModal = modalEventoEl?.querySelector('.modal-title');
-    if (tituloModal) tituloModal.textContent = 'Adicionar evento';
+  async function salvarEvento() {
+    if (!isProfessor && !isAdmin) return;
 
-    if (eventoDataInicioInput && dataDefault) {
-      eventoDataInicioInput.value = dataDefault;
+    const id = (eventoId?.value || '').trim();
+    const titulo = (eventoTitulo?.value || '').trim();
+    const dataInicio = (eventoDataInicio?.value || '').trim();
+    const dataFim = (eventoDataFim?.value || '').trim() || null;
+
+    if (!titulo || !dataInicio) {
+      setMsg(fbEvento, 'Informe título e data de início.', 'erro');
+      return;
     }
 
-    if (btnExcluirEvento) btnExcluirEvento.classList.add('d-none');
-    eventoSelecionado = null;
-    modalEvento.show();
+    const body = { titulo, dataInicio, dataFim };
+
+    try {
+      if (id) {
+        await api(`/Eventos/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        });
+      } else {
+        await api('/Eventos', {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
+      }
+
+      setMsg(fbEvento, 'Evento salvo com sucesso.', 'ok');
+      if (state.calendar) state.calendar.refetchEvents();
+      setTimeout(() => modalEvento && modalEvento.hide(), 600);
+    } catch (err) {
+      console.error(err);
+      setMsg(fbEvento, err.message || 'Erro ao salvar evento.', 'erro');
+    }
   }
 
-  function abrirModalEventoEditar(ev) {
-    if (!modalEvento || !ev) return;
-    limparFormularioEvento();
+  async function excluirEvento() {
+    if (!isProfessor && !isAdmin) return;
+    const id = (eventoId?.value || '').trim();
+    if (!id) return;
 
-    const tituloModal = modalEventoEl?.querySelector('.modal-title');
-    if (tituloModal) tituloModal.textContent = 'Editar evento';
-
-    if (eventoIdInput) eventoIdInput.value = ev.id || '';
-    if (eventoTituloInput) eventoTituloInput.value = ev.title || '';
-
-    const startStr = ev.startStr ? ev.startStr.substring(0, 10) : '';
-    const endStr = ev.endStr ? ev.endStr.substring(0, 10) : '';
-
-    if (eventoDataInicioInput) eventoDataInicioInput.value = startStr;
-    if (eventoDataFimInput) eventoDataFimInput.value = endStr;
-
-    if (btnExcluirEvento) btnExcluirEvento.classList.remove('d-none');
-
-    eventoSelecionado = ev;
-    modalEvento.show();
+    if (!confirm('Excluir este evento?')) return;
+    try {
+      await api(`/Eventos/${id}`, { method: 'DELETE' });
+      if (state.calendar) state.calendar.refetchEvents();
+      modalEvento && modalEvento.hide();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Erro ao excluir evento.');
+    }
   }
 
-  if (calEl && window.FullCalendar) {
-    calendar = new FullCalendar.Calendar(calEl, {
+  if (btnSalvarEvento) btnSalvarEvento.addEventListener('click', salvarEvento);
+  if (btnExcluirEvento) btnExcluirEvento.addEventListener('click', excluirEvento);
+
+  function initCalendario() {
+    if (!calendarioEl || !window.FullCalendar) return;
+    if (state.calendar) {
+      state.calendar.render();
+      return;
+    }
+
+    state.calendar = new FullCalendar.Calendar(calendarioEl, {
       initialView: 'dayGridMonth',
       height: 'auto',
-      headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
-      selectable: false,
-      editable: isProfessor || isAdmin,
-      events: [],
-      eventClick: function (info) {
+      locale: 'pt-br',
+      events: async function (info, success, failure) {
+        try {
+          const dados = await api('/Eventos') || [];
+          const eventos = dados.map(ev => ({
+            id: ev.id,
+            title: ev.titulo,
+            start: ev.dataInicio,
+            end: ev.dataFim || ev.dataInicio
+          }));
+          success(eventos);
+        } catch (err) {
+          console.error(err);
+          failure(err);
+        }
+      },
+      dateClick: function (info) {
         if (!isProfessor && !isAdmin) return;
-        abrirModalEventoEditar(info.event);
+        abrirModalEvento({ titulo: '', dataInicio: info.dateStr, dataFim: '' });
+      },
+      eventClick: function (info) {
+        const ev = info.event;
+        if (!ev) return;
+        abrirModalEvento({
+          id: ev.id,
+          titulo: ev.title,
+          dataInicio: ev.startStr.slice(0, 10),
+          dataFim: ev.endStr ? ev.endStr.slice(0, 10) : ''
+        });
       }
     });
 
-    let btnAddEvento = document.getElementById('btnAddEvento');
-    if (!isProfessor && !isAdmin && btnAddEvento) {
-      btnAddEvento.classList.add('d-none');
-    }
-
-    if (btnAddEvento && (isProfessor || isAdmin)) {
-      btnAddEvento.addEventListener('click', () => {
-        abrirModalEventoCriar();
-      });
-    }
-
-    if (btnSalvarEvento) {
-      btnSalvarEvento.addEventListener('click', async () => {
-        if (!isProfessor && !isAdmin) return;
-
-        if (fbEvento) {
-          fbEvento.textContent = '';
-          fbEvento.className = 'small mt-1';
-        }
-
-        const idStr = (eventoIdInput?.value || '').trim();
-        const titulo = (eventoTituloInput?.value || '').trim();
-        const dataInicio = (eventoDataInicioInput?.value || '').trim();
-        const dataFim = (eventoDataFimInput?.value || '').trim();
-
-        if (!titulo || !dataInicio) {
-          if (fbEvento) {
-            fbEvento.textContent = 'Preencha pelo menos título e data de início.';
-            fbEvento.classList.add('text-danger');
-          }
-          return;
-        }
-
-        const payload = {
-          id: idStr ? parseInt(idStr, 10) : 0,
-          titulo,
-          dataInicio,
-          dataFim: dataFim || null
-        };
-
-        try {
-          if (!idStr) {
-            const criado = await apiFetch('/Eventos', {
-              method: 'POST',
-              body: JSON.stringify(payload)
-            });
-            calendar.addEvent({
-              id: String(criado.id),
-              title: criado.titulo,
-              start: criado.dataInicio,
-              end: criado.dataFim
-            });
-          } else {
-            const idNum = parseInt(idStr, 10);
-            await apiFetch(`/Eventos/${idNum}`, {
-              method: 'PUT',
-              body: JSON.stringify(payload)
-            });
-
-            const ev = calendar.getEventById(String(idNum));
-            if (ev) {
-              ev.setProp('title', titulo);
-              ev.setStart(dataInicio);
-              ev.setEnd(dataFim || null);
-            }
-          }
-
-          if (fbEvento) {
-            fbEvento.textContent = 'Evento salvo com sucesso.';
-            fbEvento.classList.add('text-success');
-          }
-
-          setTimeout(() => {
-            if (modalEvento) modalEvento.hide();
-          }, 500);
-        } catch (err) {
-          console.error(err);
-          if (fbEvento) {
-            fbEvento.textContent = err.message || 'Erro ao salvar evento.';
-            fbEvento.classList.add('text-danger');
-          }
-        }
-      });
-    }
-
-    if (btnExcluirEvento) {
-      btnExcluirEvento.addEventListener('click', async () => {
-        if (!isProfessor && !isAdmin) return;
-        const idStr = (eventoIdInput?.value || '').trim();
-        if (!idStr) return;
-
-        if (!confirm('Tem certeza que deseja excluir este evento?')) return;
-
-        const idNum = parseInt(idStr, 10);
-
-        try {
-          await apiFetch(`/Eventos/${idNum}`, { method: 'DELETE' });
-          const ev = calendar.getEventById(String(idNum));
-          if (ev) ev.remove();
-
-          if (fbEvento) {
-            fbEvento.textContent = 'Evento excluído com sucesso.';
-            fbEvento.classList.add('text-success');
-          }
-
-          setTimeout(() => {
-            if (modalEvento) modalEvento.hide();
-          }, 500);
-        } catch (err) {
-          console.error(err);
-          if (fbEvento) {
-            fbEvento.textContent = err.message || 'Erro ao excluir evento.';
-            fbEvento.classList.add('text-danger');
-          }
-        }
-      });
-    }
-
-    (async function carregarEventos() {
-      try {
-        const lista = await apiFetch('/Eventos');
-        (lista || []).forEach(ev => {
-          calendar.addEvent({
-            id: String(ev.id),
-            title: ev.titulo,
-            start: ev.dataInicio,
-            end: ev.dataFim
-          });
-        });
-      } catch (err) {
-        console.error('Erro ao carregar eventos', err);
-      }
-    })();
+    state.calendar.render();
   }
 
-  // ================== MATRÍCULAS PENDENTES ==================
-  function formatarDataString(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString('pt-BR');
+  if (btnAddEvento) {
+    btnAddEvento.addEventListener('click', () => {
+      abrirModalEvento({ titulo: '', dataInicio: '', dataFim: '' });
+    });
   }
+
+  // ================== MATRÍCULAS PENDENTES (ADMIN) ==================
+  const tbodyMatriculasPend = document.getElementById('tbodyMatriculasPendentesCadastro');
+  const cadMatId = document.getElementById('cadMatId');
+  const cadMatNome = document.getElementById('cadMatNome');
+  const cadMatEmail = document.getElementById('cadMatEmail');
+  const cadMatDataNasc = document.getElementById('cadMatDataNasc');
+  const cadMatRA = document.getElementById('cadMatRA');
+  const cadMatTurma = document.getElementById('cadMatTurma');
+  const fbCadastroMatricula = document.getElementById('fbCadastroMatricula');
+  const btnSalvarCadastroMatricula = document.getElementById('btnSalvarCadastroMatricula');
 
   function atualizarMatriculasPendentes() {
-    const tbody = document.getElementById('tbodyMatriculasPendentesCadastro');
-    if (!tbody) return;
-    tbody.innerHTML = '';
+    if (!tbodyMatriculasPend) return;
+    tbodyMatriculasPend.innerHTML = '';
 
     if (!isAdmin) {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
-        Apenas administradores podem ver as matrículas pendentes.
+        Somente administradores podem gerenciar matrículas pendentes.
       </td>`;
-      tbody.appendChild(tr);
+      tbodyMatriculasPend.appendChild(tr);
       return;
     }
 
-    if (!matriculasPendentes.length) {
+    if (!state.matriculasPendentes.length) {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td colspan="6" class="text-center text-body-secondary">
         Nenhuma matrícula pendente.
       </td>`;
-      tbody.appendChild(tr);
+      tbodyMatriculasPend.appendChild(tr);
       return;
     }
 
-    matriculasPendentes.forEach(m => {
+    state.matriculasPendentes.forEach(m => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${m.nome}</td>
         <td>${m.email}</td>
-        <td>${formatarDataString(m.dataNascimento)}</td>
-        <td>${formatarDataString(m.criadoEm)}</td>
-        <td>${m.status ?? 'Pendente'}</td>
+        <td>${m.dataNascimento ? m.dataNascimento.substring(0, 10) : '—'}</td>
+        <td>${m.dataCriacao ? m.dataCriacao.substring(0, 16).replace('T', ' ') : '—'}</td>
+        <td>${m.status || 'Pendente'}</td>
         <td>
-          <button
-            class="btn btn-sm btn-success"
-            data-acao="cad-matricula"
-            data-id="${m.id}">
+          <button class="btn btn-sm btn-primary" data-acao="cad-aluno" data-id="${m.id}">
             Cadastrar
           </button>
         </td>`;
-      tbody.appendChild(tr);
+      tbodyMatriculasPend.appendChild(tr);
     });
   }
 
-  // Clique no botão "Cadastrar" da lista de matrículas pendentes
-  const tbodyMatriculasPendentesCadastro = document.getElementById('tbodyMatriculasPendentesCadastro');
-  if (tbodyMatriculasPendentesCadastro) {
-    tbodyMatriculasPendentesCadastro.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-acao="cad-matricula"]');
+  if (tbodyMatriculasPend) {
+    tbodyMatriculasPend.addEventListener('click', e => {
+      const btn = e.target.closest('button');
       if (!btn) return;
-      if (!isAdmin || !modalCadastroAlunoMatricula) return;
+      const acao = btn.getAttribute('data-acao');
+      const id = parseInt(btn.getAttribute('data-id') || '0', 10);
+      if (acao === 'cad-aluno' && id && isAdmin) {
+        const m = state.matriculasPendentes.find(x => x.id === id);
+        if (!m || !modalCadAlunoMat) return;
 
-      const id = parseInt(btn.dataset.id, 10);
-      if (!id) return;
-
-      const mat = matriculasPendentes.find(m => m.id === id);
-      if (!mat) return;
-
-      matriculaSelecionada = mat;
-
-      // Preenche campos que vêm da solicitação e bloqueia edição
-      if (cadMatIdInput)       cadMatIdInput.value       = mat.id;
-      if (cadMatNomeInput)     cadMatNomeInput.value     = mat.nome || '';
-      if (cadMatEmailInput)    cadMatEmailInput.value    = mat.email || '';
-
-      if (cadMatDataNascInput) {
-        // converte para yyyy-MM-dd para o input date
-        if (mat.dataNascimento) {
-          const d = new Date(mat.dataNascimento);
-          if (!isNaN(d.getTime())) {
-            cadMatDataNascInput.value = d.toISOString().substring(0, 10);
-          } else {
-            cadMatDataNascInput.value = '';
-          }
-        } else {
-          cadMatDataNascInput.value = '';
-        }
+        state.matriculaCadastroAtual = { idSolicitacao: id };
+        if (cadMatId) cadMatId.value = String(id);
+        if (cadMatNome) cadMatNome.value = m.nome || '';
+        if (cadMatEmail) cadMatEmail.value = m.email || '';
+        if (cadMatDataNasc) cadMatDataNasc.value = m.dataNascimento ? m.dataNascimento.substring(0, 10) : '';
+        if (cadMatRA) cadMatRA.value = '';
+        if (cadMatTurma) cadMatTurma.value = '';
+        setMsg(fbCadastroMatricula, '');
+        modalCadAlunoMat.show();
       }
-
-      if (cadMatRAInput)    cadMatRAInput.value = '';
-      if (cadMatTurmaInput) cadMatTurmaInput.value = '';
-
-      if (fbCadastroMatricula) {
-        fbCadastroMatricula.textContent = '';
-        fbCadastroMatricula.className = 'small mt-1';
-      }
-
-      modalCadastroAlunoMatricula.show();
     });
+  }
+
+  async function salvarCadastroAlunoMatricula() {
+    if (!state.matriculaCadastroAtual) return;
+    const idSolic = state.matriculaCadastroAtual.idSolicitacao;
+    const ra = (cadMatRA?.value || '').trim();
+    const turma = (cadMatTurma?.value || '').trim();
+
+    if (!ra || !turma) {
+      setMsg(fbCadastroMatricula, 'Informe RA e turma do aluno.', 'erro');
+      return;
+    }
+
+    const m = state.matriculasPendentes.find(x => x.id === idSolic);
+    if (!m) {
+      setMsg(fbCadastroMatricula, 'Solicitação não encontrada.', 'erro');
+      return;
+    }
+
+    try {
+      // 1) Cria o aluno
+      const novoAluno = await api('/Alunos', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: m.nome,
+          email: m.email,
+          dataNascimento: m.dataNascimento,
+          ra,
+          turma
+        })
+      });
+      state.alunos.push(novoAluno);
+
+      // 2) Marca a matrícula como aprovada
+      await api('/Matriculas/responder', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: idSolic,
+          aprovar: true,
+          observacao: null
+        })
+      });
+
+      // Remove da lista local
+      state.matriculasPendentes = state.matriculasPendentes.filter(x => x.id !== idSolic);
+      atualizarMatriculasPendentes();
+      atualizarListagem();
+      atualizarTurmasFiltros();
+      setMsg(fbCadastroMatricula, 'Aluno cadastrado e matrícula aprovada.', 'ok');
+      setTimeout(() => modalCadAlunoMat && modalCadAlunoMat.hide(), 700);
+    } catch (err) {
+      console.error(err);
+      setMsg(fbCadastroMatricula, err.message || 'Erro ao cadastrar aluno/aprovar matrícula.', 'erro');
+    }
   }
 
   if (btnSalvarCadastroMatricula) {
-    btnSalvarCadastroMatricula.addEventListener('click', async () => {
-      if (!isAdmin || !matriculaSelecionada) return;
-
-      if (fbCadastroMatricula) {
-        fbCadastroMatricula.textContent = '';
-        fbCadastroMatricula.className = 'small mt-1';
-      }
-
-      const ra    = (cadMatRAInput?.value || '').trim();
-      const turma = (cadMatTurmaInput?.value || '').trim();
-
-      if (!ra || !turma) {
-        if (fbCadastroMatricula) {
-          fbCadastroMatricula.textContent = 'Preencha RA e Turma para concluir o cadastro.';
-          fbCadastroMatricula.classList.add('text-danger');
-        }
-        return;
-      }
-
-      try {
-        // 1) Cria o aluno
-        const bodyAluno = JSON.stringify({
-          nome: matriculaSelecionada.nome,
-          email: matriculaSelecionada.email,
-          ra,
-          turma,
-          dataNascimento: matriculaSelecionada.dataNascimento
-        });
-
-        await apiFetch('/Alunos', {
-          method: 'POST',
-          body: bodyAluno
-        });
-
-        // 2) Marca a matrícula como Aprovada
-        const bodyResposta = JSON.stringify({
-          id: matriculaSelecionada.id,
-          aprovar: true,
-          observacao: null
-        });
-
-        await apiFetch('/Matriculas/responder', {
-          method: 'POST',
-          body: bodyResposta
-        });
-
-        // Remove da lista em memória e atualiza tabela
-        matriculasPendentes = matriculasPendentes.filter(m => m.id !== matriculaSelecionada.id);
-        matriculaSelecionada = null;
-
-        atualizarMatriculasPendentes();
-        atualizarFiltros();
-        atualizarListagens();
-
-        if (fbCadastroMatricula) {
-          fbCadastroMatricula.textContent = 'Aluno cadastrado com sucesso e matrícula aprovada.';
-          fbCadastroMatricula.classList.add('text-success');
-        }
-
-        setTimeout(() => {
-          if (modalCadastroAlunoMatricula) modalCadastroAlunoMatricula.hide();
-        }, 700);
-      } catch (err) {
-        console.error(err);
-        if (fbCadastroMatricula) {
-          fbCadastroMatricula.textContent = err.message || 'Erro ao cadastrar aluno a partir da matrícula.';
-          fbCadastroMatricula.classList.add('text-danger');
-        }
-      }
-    });
+    btnSalvarCadastroMatricula.addEventListener('click', salvarCadastroAlunoMatricula);
   }
-
-
 
   // ================== CARREGAMENTO INICIAL ==================
   async function carregarDadosIniciais() {
     try {
-      const [alunosApi, profsApi, notasProfApi, turmasApi, matsApi] = await Promise.all([
-        apiFetch('/Alunos'),
-        apiFetch('/Professores'),
-        isProfessor ? apiFetch('/Notas/professor') : Promise.resolve([]),
-        apiFetch('/Alunos/turmas'),
-        isAdmin ? apiFetch('/Matriculas/pendentes') : Promise.resolve([])
-      ]);
+      const promessas = [
+        api('/Alunos'),
+        api('/Professores'),
+        api('/Alunos/turmas')
+      ];
 
-      alunos = alunosApi || [];
-      professores = profsApi || [];
-      notasProfessor = notasProfApi || [];
-      turmas = turmasApi || [];
-      matriculasPendentes = matsApi || [];
+      if (isProfessor) {
+        promessas.push(api('/Notas/professor'));
+      } else {
+        promessas.push(Promise.resolve([]));
+      }
 
-      atualizarFiltros();
-      atualizarListagens();
-      atualizarTurmasNotas();
-      if (isProfessor) atualizarNotas();
-      if (isAdmin || isProfessor) atualizarGraficos();
+      if (isAdmin) {
+        promessas.push(api('/Matriculas/pendentes'));
+      } else {
+        promessas.push(Promise.resolve([]));
+      }
+
+      const [
+        alunosApi,
+        profsApi,
+        turmasApi,
+        notasProfApi,
+        matsApi
+      ] = await Promise.all(promessas);
+
+      state.alunos = alunosApi || [];
+      state.professores = profsApi || [];
+      state.turmas = turmasApi || [];
+      state.notasProfessor = notasProfApi || [];
+      state.matriculasPendentes = matsApi || [];
+
+      atualizarTurmasFiltros();
+      atualizarFiltroDisciplinas();
+      atualizarListagem();
       if (isAdmin) atualizarMatriculasPendentes();
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao carregar dados iniciais:', err);
       alert(err.message || 'Erro ao carregar dados iniciais.');
     }
   }
 
-  carregarDadosIniciais();
+  // ================== INICIALIZAÇÃO GERAL ==================
+  function init() {
+    configurarPermissoes();
+    montarHome();
+    atualizarTipoCadastro('aluno');
+    carregarDadosIniciais();
+  }
+
+  init();
+
 })();

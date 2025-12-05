@@ -1,87 +1,117 @@
+using System.Text;
 using EduConnect.Api.Data;
 using EduConnect.Api.Models;
 using EduConnect.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===== BANCO DE DADOS =====
+// ===============================================
+// 1) CONFIGURAÇÃO DO BANCO DE DADOS
+// ===============================================
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
-// ===== SERVIÇOS =====
+// ===============================================
+// 2) SERVIÇOS DA APLICAÇÃO
+// ===============================================
 builder.Services.AddScoped<JwtService>();
-builder.Services.AddTransient<EmailService>();
+builder.Services.AddScoped<EmailService>();
 
-// ===== JWT =====
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key não configurado");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "EduConnect.Api";
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(opt =>
+{
+    opt.SwaggerDoc("v1", new() { Title = "EduConnect API", Version = "v1" });
 
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    // Adiciona esquema Bearer Token no Swagger
+    opt.AddSecurityDefinition("Bearer", new()
+    {
+        Description = "Insira: Bearer {seu_token}",
+        Name = "Authorization",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer"
+    });
+
+    opt.AddSecurityRequirement(new()
+    {
+        {
+            new() { Reference = new() { Id = "Bearer", Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme } },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// ===============================================
+// 3) AUTENTICAÇÃO JWT
+// ===============================================
+var jwtKey = builder.Configuration["Jwt:Key"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        options.RequireHttpsMetadata = false;
+        options.TokenValidationParameters = new()
         {
             ValidateIssuer = true,
-            ValidateAudience = false,
+            ValidateAudience = !string.IsNullOrWhiteSpace(jwtAudience),
+            ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
             ValidIssuer = jwtIssuer,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidAudience = jwtAudience,
+
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey!))
         };
     });
 
 builder.Services.AddAuthorization();
 
-// ===== CONTROLLERS + JSON =====
-builder.Services
-    .AddControllers()
-    .AddJsonOptions(options =>
-    {
-        // camelCase no JSON: Nome -> nome, Turma -> turma etc.
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-    });
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-// ===== CORS PARA O FRONT (ajuste a porta/local se precisar) =====
+// ===============================================
+// 4) CORS (libera apenas o front-end local)
+// ===============================================
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("Frontend", policy =>
-    {
-        policy
-            .WithOrigins("http://localhost:5500", "http://127.0.0.1:5500")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
+    options.AddPolicy("Frontend",
+        policy =>
+        {
+            policy
+                .AllowAnyOrigin()
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
 });
 
 var app = builder.Build();
 
-app.UseCors("Frontend");
-
+// ===============================================
+// 5) SWAGGER NO DESENVOLVIMENTO
+// ===============================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-
+// ===============================================
+// 6) MIDDLEWARES
+// ===============================================
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
+// ===============================================
+// 7) SEED: cria o admin se não existir
+// ===============================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -97,9 +127,10 @@ using (var scope = app.Services.CreateScope())
         };
 
         db.Usuarios.Add(admin);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
+
+        Console.WriteLine("Usuário administrador criado automaticamente: admin / admin123");
     }
 }
-
 
 app.Run();

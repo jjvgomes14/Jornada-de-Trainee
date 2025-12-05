@@ -6,6 +6,6 @@ public class Disciplina
 {
     public int Id { get; set; }
 
-    [Required]
-    public string Nome { get; set; } = null!;
+    [Required(ErrorMessage = "O nome da disciplina é obrigatório.")]
+    public string Nome { get; set; } = string.Empty;
 }

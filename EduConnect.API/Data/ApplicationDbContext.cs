@@ -10,6 +10,7 @@ public class ApplicationDbContext : DbContext
     {
     }
 
+    // ========== ENTIDADES ==========
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Aluno> Alunos => Set<Aluno>();
     public DbSet<Professor> Professores => Set<Professor>();
@@ -18,20 +19,45 @@ public class ApplicationDbContext : DbContext
     public DbSet<EventoCalendario> Eventos => Set<EventoCalendario>();
     public DbSet<SolicitacaoMatricula> SolicitacoesMatricula => Set<SolicitacaoMatricula>();
 
+
+    // ========== CONFIGURAÇÃO DO MODELO ==========
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Índice único para RA e Username
-        modelBuilder.Entity<Aluno>()
-            .HasIndex(a => a.RA)
-            .IsUnique();
-
+        // ------------------------------
+        // USUÁRIOS
+        // ------------------------------
         modelBuilder.Entity<Usuario>()
             .HasIndex(u => u.Username)
-            .IsUnique();
+            .IsUnique()
+            .HasDatabaseName("IX_Usuario_Username");
 
-        // Relacionamentos de Nota
+        // ------------------------------
+        // ALUNOS
+        // ------------------------------
+        modelBuilder.Entity<Aluno>()
+            .HasIndex(a => a.RA)
+            .IsUnique()
+            .HasDatabaseName("IX_Aluno_RA");
+
+        // ------------------------------
+        // PROFESSORES
+        // Vincula opcionalmente o usuário
+        // ------------------------------
+        modelBuilder.Entity<Professor>()
+            .HasOne<Usuario>()
+            .WithMany()
+            .HasForeignKey(p => p.UsuarioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ------------------------------
+        // NOTAS
+        // Cada nota pertence a:
+        // - um aluno
+        // - um professor
+        // - uma disciplina
+        // ------------------------------
         modelBuilder.Entity<Nota>()
             .HasOne(n => n.Aluno)
             .WithMany(a => a.Notas)
@@ -49,5 +75,22 @@ public class ApplicationDbContext : DbContext
             .WithMany()
             .HasForeignKey(n => n.DisciplinaId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // ------------------------------
+        // EVENTOS DO CALENDÁRIO
+        // ProfessorId é opcional
+        // ------------------------------
+        modelBuilder.Entity<EventoCalendario>()
+            .HasOne<Professor>()
+            .WithMany()
+            .HasForeignKey(e => e.ProfessorId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // ------------------------------
+        // SOLICITAÇÕES DE MATRÍCULA
+        // ------------------------------
+        modelBuilder.Entity<SolicitacaoMatricula>()
+            .Property(s => s.Status)
+            .HasConversion<string>(); // salva "Pendente", "Aprovada", "Rejeitada"
     }
 }

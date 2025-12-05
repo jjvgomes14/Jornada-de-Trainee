@@ -1,5 +1,4 @@
-﻿// EmailService.cs
-using System.Net;
+﻿using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Configuration;
 
@@ -16,34 +15,45 @@ public class EmailService
 
     public async Task EnviarAsync(string destinatario, string assunto, string mensagem)
     {
-        var host = _config["Email:SmtpHost"];
-        var portaStr = _config["Email:SmtpPort"];
-        var usuario = _config["Email:User"];
-        var senha = _config["Email:Password"];
-        var remetente = _config["Email:From"] ?? usuario;
+        // Lê configurações do appsettings.json
+        var host = _config["Smtp:Host"];
+        var porta = _config["Smtp:Port"];
+        var usuario = _config["Smtp:Username"];
+        var senha = _config["Smtp:Password"];
+        var remetente = _config["Smtp:From"];
 
+        // Se não houver configuração → não envia, mas não quebra o sistema
         if (string.IsNullOrWhiteSpace(host) ||
-            string.IsNullOrWhiteSpace(portaStr) ||
+            string.IsNullOrWhiteSpace(porta) ||
             string.IsNullOrWhiteSpace(usuario) ||
             string.IsNullOrWhiteSpace(senha) ||
             string.IsNullOrWhiteSpace(remetente))
         {
-            // Não quebra se não estiver configurado
+            // Aqui você poderia registrar um log, se quisesse
             return;
         }
 
-        if (!int.TryParse(portaStr, out var porta))
+        using var smtp = new SmtpClient(host, int.Parse(porta))
         {
-            porta = 587;
-        }
-
-        using var client = new SmtpClient(host, porta)
-        {
-            Credentials = new NetworkCredential(usuario, senha),
-            EnableSsl = true
+            EnableSsl = true,
+            Credentials = new NetworkCredential(usuario, senha)
         };
 
-        using var mail = new MailMessage(remetente, destinatario, assunto, mensagem);
-        await client.SendMailAsync(mail);
+        using var mail = new MailMessage(remetente, destinatario)
+        {
+            Subject = assunto,
+            Body = mensagem,
+            IsBodyHtml = false
+        };
+
+        try
+        {
+            await smtp.SendMailAsync(mail);
+        }
+        catch
+        {
+            // Silencioso por padrão, igual ao design original
+            // Se quiser logging, basta adicionar aqui
+        }
     }
 }

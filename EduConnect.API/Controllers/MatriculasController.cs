@@ -22,97 +22,129 @@ public class MatriculasController : ControllerBase
         _email = email;
     }
 
+    // =========================
+    // 1) SOLICITAR MATRÍCULA
+    // =========================
+    // POST: /api/Matriculas/solicitar
+    // Qualquer pessoa (sem login) pode solicitar matrícula
     [HttpPost("solicitar")]
     [AllowAnonymous]
-    public async Task<ActionResult> Solicitar([FromBody] MatriculaSolicitacaoDto dto)
+    public async Task<IActionResult> Solicitar([FromBody] MatriculaSolicitacaoDto dto)
     {
-        var ent = new SolicitacaoMatricula
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var solicitacao = new SolicitacaoMatricula
         {
-            Nome = dto.Nome,
-            Email = dto.Email,
-            DataNascimento = dto.DataNascimento
+            Nome = dto.Nome.Trim(),
+            Email = dto.Email.Trim(),
+            DataNascimento = dto.DataNascimento.Date,
+            CriadoEm = DateTime.UtcNow,
+            Status = StatusMatricula.Pendente
         };
 
-        _db.SolicitacoesMatricula.Add(ent);
+        _db.SolicitacoesMatricula.Add(solicitacao);
         await _db.SaveChangesAsync();
 
-        // E-mail automático simples
+        // Tenta enviar e-mail de confirmação, mas não falha a requisição se der erro
         try
         {
-            const string texto = "Matricula realizada com sucesso";
-            await _email.EnviarAsync(ent.Email, "Matrícula realizada com sucesso", texto);
+            var assunto = "Solicitação de matrícula recebida – EduConnect";
+            var mensagem =
+                $"Olá {solicitacao.Nome},\n\n" +
+                "Recebemos sua solicitação de matrícula.\n" +
+                "Nossa equipe irá analisar os dados e, em breve, retornaremos por e-mail.\n\n" +
+                "Atenciosamente,\nPortal EduConnect";
+
+            await _email.EnviarAsync(solicitacao.Email, assunto, mensagem);
         }
         catch
         {
-            // não quebra o fluxo
+            // aqui você poderia logar o erro se tiver um logger configurado
         }
 
         return Ok(new { message = "Solicitação registrada com sucesso." });
     }
 
+    // =========================
+    // 2) LISTAR PENDENTES (ADMIN)
+    // =========================
+    // GET: /api/Matriculas/pendentes
     [HttpGet("pendentes")]
     [Authorize(Roles = UserRoles.Administrador)]
-    public async Task<ActionResult<IEnumerable<SolicitacaoMatricula>>> GetPendentes()
+    public async Task<ActionResult<IEnumerable<object>>> GetPendentes()
     {
-        var lista = await _db.SolicitacoesMatricula
+        var pendentes = await _db.SolicitacoesMatricula
+            .AsNoTracking()
             .Where(s => s.Status == StatusMatricula.Pendente)
-            .OrderBy(s => s.CriadoEm)
+            .OrderByDescending(s => s.CriadoEm)
             .ToListAsync();
 
-        return Ok(lista);
+        // Projeta para um formato simples, com nomes que casam bem com o front
+        var resultado = pendentes.Select(s => new
+        {
+            s.Id,
+            s.Nome,
+            s.Email,
+            dataNascimento = s.DataNascimento,
+            dataCriacao = s.CriadoEm,
+            status = s.Status.ToString(),
+            s.Observacao
+        });
+
+        return Ok(resultado);
     }
 
+    // =========================
+    // 3) RESPONDER MATRÍCULA (ADMIN)
+    // =========================
+    // POST: /api/Matriculas/responder
     [HttpPost("responder")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Responder([FromBody] MatriculaRespostaDto dto)
     {
-        var sol = await _db.SolicitacoesMatricula.FindAsync(dto.Id);
-        if (sol == null) return NotFound();
+        if (dto.Id <= 0)
+            return BadRequest(new { message = "Id da solicitação inválido." });
 
-        sol.Status = dto.Aprovar ? StatusMatricula.Aprovada : StatusMatricula.Rejeitada;
-        sol.Observacao = dto.Observacao;
+        var solicitacao = await _db.SolicitacoesMatricula.FindAsync(dto.Id);
+        if (solicitacao == null)
+            return NotFound(new { message = "Solicitação de matrícula não encontrada." });
+
+        if (solicitacao.Status != StatusMatricula.Pendente)
+            return BadRequest(new { message = "Esta solicitação já foi respondida anteriormente." });
+
+        solicitacao.Status = dto.Aprovar ? StatusMatricula.Aprovada : StatusMatricula.Rejeitada;
+        solicitacao.Observacao = dto.Observacao;
 
         await _db.SaveChangesAsync();
-        return NoContent();
-    }
 
-    private string GerarUsernameBasico(string nomeCompleto)
-    {
-        if (string.IsNullOrWhiteSpace(nomeCompleto))
-            throw new ArgumentException("Nome inválido.");
-
-        var partes = nomeCompleto
-            .Trim()
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        var primeiraLetra = char.ToLowerInvariant(partes[0][0]);
-        var ultimoSobrenome = partes.Length > 1
-            ? partes[^1].ToLowerInvariant()
-            : partes[0].ToLowerInvariant();
-
-        return $"{primeiraLetra}{ultimoSobrenome}";
-    }
-
-    // Garante unicidade acrescentando número se já existir
-    private async Task<string> GerarUsernameUnicoAsync(string nomeCompleto)
-    {
-        var baseUser = GerarUsernameBasico(nomeCompleto);
-        var username = baseUser;
-        var sufixo = 1;
-
-        while (await _db.Usuarios.AnyAsync(u => u.Username == username))
+        // Opcional: e-mail informando aprovação/rejeição
+        try
         {
-            sufixo++;
-            username = $"{baseUser}{sufixo}";
+            var assunto = dto.Aprovar
+                ? "Matrícula aprovada – EduConnect"
+                : "Matrícula analisada – EduConnect";
+
+            var statusTexto = dto.Aprovar ? "APROVADA" : "REJEITADA";
+
+            var mensagem =
+                $"Olá {solicitacao.Nome},\n\n" +
+                $"Sua solicitação de matrícula foi {statusTexto}.\n";
+
+            if (!string.IsNullOrWhiteSpace(dto.Observacao))
+            {
+                mensagem += $"\nObservação: {dto.Observacao}\n";
+            }
+
+            mensagem += "\nAtenciosamente,\nPortal EduConnect";
+
+            await _email.EnviarAsync(solicitacao.Email, assunto, mensagem);
+        }
+        catch
+        {
+            // idem: aqui poderia logar o erro
         }
 
-        return username;
+        return NoContent();
     }
-
-    // Gera senha aleatória simples (8 caracteres)
-    private string GerarSenhaAleatoria()
-    {
-        return Guid.NewGuid().ToString("N")[..10]; // 10 caracteres
-    }
-
 }

@@ -1,189 +1,207 @@
-// script.js
-(function () {
+(() => {
   'use strict';
 
-  // ============================
-  // CONFIGURAÇÃO DA API
-  // ============================
   const API_BASE_URL = 'http://localhost:5191/api';
 
-  var form = document.getElementById('formLogin');
-  var inpUsuario = document.getElementById('usuario');
-  var inpSenha = document.getElementById('senha');
-  var erroUsuario = document.getElementById('erroUsuario');
-  var erroSenha = document.getElementById('erroSenha');
-  var feedback = document.getElementById('feedback');
-  var switchTema = document.getElementById('switchTema');
-  var labelTema = document.getElementById('labelTema');
-  var body = document.body;
+  // Elementos de Tela
+  const formLogin   = document.getElementById('formLogin');
+  const inpUsuario  = document.getElementById('usuario');
+  const inpSenha    = document.getElementById('senha');
+  const erroUsuario = document.getElementById('erroUsuario');
+  const erroSenha   = document.getElementById('erroSenha');
+  const feedback    = document.getElementById('feedback');
 
-  // ============================
-  // TEMA CLARO/ESCURO
-  // ============================
-  var tema = localStorage.getItem('tema') || 'light';
-  aplicarTema(tema);
+  const switchTema  = document.getElementById('switchTema');
+  const labelTema   = document.getElementById('labelTema');
 
-  switchTema.addEventListener('change', function () {
-    var novo = switchTema.checked ? 'dark' : 'light';
-    aplicarTema(novo);
-    localStorage.setItem('tema', novo);
-  });
+  const formMatricula = document.getElementById('formMatricula');
+  const fbMatricula   = document.getElementById('fbMatricula');
 
-  function aplicarTema(nome) {
-    body.setAttribute('data-bs-theme', nome);
-    labelTema.textContent = (nome === 'dark') ? 'Modo escuro' : 'Modo claro';
-    switchTema.checked = (nome === 'dark');
+  // Tema Claro/Escuro
+  function aplicarTema(tema) {
+    document.body.setAttribute('data-bs-theme', tema);
+    if (switchTema) switchTema.checked = tema === 'dark';
+    if (labelTema) labelTema.textContent = tema === 'dark' ? 'Modo escuro' : 'Modo claro';
   }
 
-  // ============================
-  // HELPER DE CHAMADA À API
-  // ============================
-  async function apiFetch(path, options) {
-    const url = API_BASE_URL + path;
-    const baseHeaders = {};
+  function initTema() {
+    const temaSalvo = localStorage.getItem('tema') || 'light';
+    aplicarTema(temaSalvo);
 
-    if (!options) options = {};
+    if (!switchTema) return;
 
-    if (!(options.body instanceof FormData)) {
-      baseHeaders['Content-Type'] = 'application/json';
-    }
+    switchTema.addEventListener('change', () => {
+      const tema = switchTema.checked ? 'dark' : 'light';
+      aplicarTema(tema);
+      localStorage.setItem('tema', tema);
+    });
+  }
 
-    const resp = await fetch(url, {
+  // Helper de chamada API
+  async function apiFetch(path, options = {}) {
+    const resp = await fetch(API_BASE_URL + path, {
       method: options.method || 'GET',
-      headers: Object.assign({}, baseHeaders, options.headers || {}),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      },
       body: options.body
     });
 
     if (resp.status === 204) return null;
 
-    let data;
+    let data = null;
     try {
       data = await resp.json();
     } catch {
-      data = null;
+      // se não tiver JSON, segue como null
     }
 
     if (!resp.ok) {
-      const msg = (data && (data.message || data.error)) || 'Erro ao comunicar com o servidor.';
+      const msg =
+        (data && (data.message || data.error)) ||
+        'Erro ao comunicar com o servidor.';
       throw new Error(msg);
     }
 
     return data;
   }
 
-  // ============================
-  // LOGIN
-  // ============================
-  if (form) {
-    form.addEventListener('submit', async function (e) {
-      e.preventDefault();
+  //Login
+  function limparMensagensLogin() {
+    if (erroUsuario) erroUsuario.textContent = '';
+    if (erroSenha) erroSenha.textContent = '';
+    if (feedback) {
       feedback.textContent = '';
-      feedback.className = 'mt-3 text-center small';
-      erroUsuario.textContent = '';
-      erroSenha.textContent = '';
+      feedback.className = 'mt-3 small text-center';
+    }
+  }
 
-      var login = (inpUsuario.value || '').trim();
-      var senha = (inpSenha.value || '').trim();
+  async function handleLogin(e) {
+    e.preventDefault();
+    limparMensagensLogin();
 
-      if (!login) {
-        erroUsuario.textContent = 'Informe seu usuário.';
-        return;
-      }
-      if (!senha) {
-        erroSenha.textContent = 'Informe sua senha.';
-        return;
-      }
+    const username = inpUsuario?.value.trim() || '';
+    const password = inpSenha?.value.trim() || '';
 
-      const btn = form.querySelector('button[type="submit"]');
-      if (btn) btn.disabled = true;
+    if (!username) {
+      if (erroUsuario) erroUsuario.textContent = 'Informe seu usuário.';
+      return;
+    }
+    if (!password) {
+      if (erroSenha) erroSenha.textContent = 'Informe sua senha.';
+      return;
+    }
 
-      try {
-        const result = await apiFetch('/Auth/login', {
-          method: 'POST',
-          body: JSON.stringify({
-            username: login,
-            password: senha
-          })
-        });
+    const btn = formLogin.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
 
-        localStorage.setItem('authToken', result.token);
-        localStorage.setItem('usuarioLogado', result.username);
-        localStorage.setItem('tipoUsuario', result.role);
-        localStorage.setItem('mustChangePassword', result.mustChangePassword ? '1' : '0');
+    try {
+      const result = await apiFetch('/Auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
 
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('usuarioLogado', result.username);
+      localStorage.setItem('tipoUsuario', result.role);
+      localStorage.setItem('mustChangePassword', result.mustChangePassword ? '1' : '0');
+
+      if (feedback) {
         feedback.className = 'mt-3 text-success small text-center';
         feedback.textContent = 'Login bem-sucedido! Redirecionando...';
+      }
 
-        setTimeout(function () {
-          window.location.href = 'dashboard.html';
-        }, 800);
-      } catch (err) {
-        console.error(err);
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 800);
+    } catch (err) {
+      console.error(err);
+      if (feedback) {
         feedback.className = 'mt-3 text-danger small text-center';
         feedback.textContent = err.message || 'Usuário ou senha inválidos.';
-      } finally {
-        if (btn) btn.disabled = false;
       }
-    });
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
-  // ============================
-  // FORMULÁRIO DE MATRÍCULA (MODAL)
-  // ============================
-  var formMatricula = document.getElementById('formMatricula');
-  var fbMatricula = document.getElementById('fbMatricula');
+  function initLogin() {
+    if (!formLogin) return;
+    formLogin.addEventListener('submit', handleLogin);
+  }
 
-  if (formMatricula) {
-    formMatricula.addEventListener('submit', async function (e) {
-      e.preventDefault();
+  // Modal de Matricula
+  function limparFeedbackMatricula() {
+    if (!fbMatricula) return;
+    fbMatricula.textContent = '';
+    fbMatricula.className = 'small mt-1';
+  }
 
+  async function handleMatricula(e) {
+    e.preventDefault();
+    limparFeedbackMatricula();
+
+    const nome           = document.getElementById('matNome')?.value.trim() || '';
+    const email          = document.getElementById('matEmail')?.value.trim() || '';
+    const dataNascimento = document.getElementById('matDataNasc')?.value || '';
+
+    if (!nome || !email || !dataNascimento) {
       if (fbMatricula) {
-        fbMatricula.textContent = '';
-        fbMatricula.className = 'small mt-1';
-      }
-
-      var nome = (document.getElementById('matNome').value || '').trim();
-      var email = (document.getElementById('matEmail').value || '').trim();
-      var dataNasc = document.getElementById('matDataNasc').value;
-
-      if (!nome || !email || !dataNasc) {
         fbMatricula.textContent = 'Preencha todos os campos.';
         fbMatricula.classList.add('text-danger');
-        return;
       }
+      return;
+    }
 
-      const btnSubmit = formMatricula.querySelector('button[type="submit"]');
-      if (btnSubmit) btnSubmit.disabled = true;
+    const btnSubmit = formMatricula.querySelector('button[type="submit"]');
+    if (btnSubmit) btnSubmit.disabled = true;
 
-      try {
-        await apiFetch('/Matriculas/solicitar', {
-          method: 'POST',
-          body: JSON.stringify({
-            nome: nome,
-            email: email,
-            dataNascimento: dataNasc
-          })
-        });
+    try {
+      await apiFetch('/Matriculas/solicitar', {
+        method: 'POST',
+        body: JSON.stringify({ nome, email, dataNascimento })
+      });
 
-        fbMatricula.textContent = 'Solicitação enviada com sucesso! Você receberá um e-mail de confirmação.';
+      if (fbMatricula) {
+        fbMatricula.textContent =
+          'Solicitação enviada com sucesso! Você receberá um e-mail de confirmação.';
         fbMatricula.classList.add('text-success');
-
-        formMatricula.reset();
-
-        setTimeout(function () {
-          var modalEl = document.getElementById('modalMatricula');
-          if (modalEl && window.bootstrap) {
-            var modal = bootstrap.Modal.getInstance(modalEl);
-            if (modal) modal.hide();
-          }
-        }, 1000);
-      } catch (err) {
-        console.error(err);
-        fbMatricula.textContent = err.message || 'Erro ao enviar solicitação. Tente novamente.';
-        fbMatricula.classList.add('text-danger');
-      } finally {
-        if (btnSubmit) btnSubmit.disabled = false;
       }
-    });
+
+      formMatricula.reset();
+
+      // Fecha o modal após 1s (se Bootstrap estiver carregado)
+      setTimeout(() => {
+        const modalEl = document.getElementById('modalMatricula');
+        if (modalEl && window.bootstrap) {
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+      }, 1000);
+    } catch (err) {
+      console.error(err);
+      if (fbMatricula) {
+        fbMatricula.textContent =
+          err.message || 'Erro ao enviar solicitação. Tente novamente.';
+        fbMatricula.classList.add('text-danger');
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+    }
   }
+
+  function initMatricula() {
+    if (!formMatricula) return;
+    formMatricula.addEventListener('submit', handleMatricula);
+  }
+
+  // Inicialização Geral
+  function init() {
+    initTema();
+    initLogin();
+    initMatricula();
+  }
+
+  init();
 })();

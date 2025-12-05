@@ -1,5 +1,4 @@
-﻿using System;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using EduConnect.Api.Data;
 using EduConnect.Api.Models;
 using EduConnect.Api.Services;
@@ -22,12 +21,34 @@ public class ProfessoresController : ControllerBase
         _email = email;
     }
 
-    // ===== Helpers para usuário/senha =====
+    // ======================= LISTAGEM BÁSICA =======================
 
-    private string GerarUsernameBasico(string nomeCompleto)
+    // GET: /api/Professores
+    [HttpGet]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<Professor>>> GetAll()
+    {
+        var professores = await _db.Professores.AsNoTracking().ToListAsync();
+        return Ok(professores);
+    }
+
+    // GET: /api/Professores/{id}
+    [HttpGet("{id:int}")]
+    [Authorize]
+    public async Task<ActionResult<Professor>> GetById(int id)
+    {
+        var professor = await _db.Professores.FindAsync(id);
+        if (professor == null) return NotFound();
+        return Ok(professor);
+    }
+
+    // ======================= HELPERS PRIVADOS =======================
+
+    // Ex.: "Carlos Silva Souza" -> "csouza"
+    private static string GerarUsernameBasico(string nomeCompleto)
     {
         if (string.IsNullOrWhiteSpace(nomeCompleto))
-            throw new ArgumentException("Nome inválido.");
+            throw new ArgumentException("Nome inválido.", nameof(nomeCompleto));
 
         var partes = nomeCompleto
             .Trim()
@@ -43,59 +64,41 @@ public class ProfessoresController : ControllerBase
 
     private async Task<string> GerarUsernameUnicoAsync(string nomeCompleto)
     {
-        var baseUsername = GerarUsernameBasico(nomeCompleto);
-        var username = baseUsername;
+        var baseUser = GerarUsernameBasico(nomeCompleto);
+        var username = baseUser;
         var sufixo = 1;
 
         while (await _db.Usuarios.AnyAsync(u => u.Username == username))
         {
-            username = $"{baseUsername}{sufixo}";
             sufixo++;
+            username = $"{baseUser}{sufixo}";
         }
 
         return username;
     }
 
-    private string GerarSenhaAleatoria(int tamanho = 8)
+    private static string GerarSenhaAleatoria(int tamanho = 10)
     {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789";
-        var rand = new Random();
-        var buffer = new char[tamanho];
-
-        for (int i = 0; i < tamanho; i++)
-            buffer[i] = chars[rand.Next(chars.Length)];
-
-        return new string(buffer);
+        return Guid.NewGuid()
+            .ToString("N")
+            .Substring(0, tamanho);
     }
 
-    // ===== Endpoints =====
+    // ======================= CRIAR PROFESSOR =======================
 
-    [HttpGet]
-    [Authorize]
-    public async Task<ActionResult<IEnumerable<Professor>>> GetAll()
-    {
-        var lista = await _db.Professores.AsNoTracking().ToListAsync();
-        return Ok(lista);
-    }
-
-    [HttpGet("{id:int}")]
-    [Authorize]
-    public async Task<ActionResult<Professor>> GetById(int id)
-    {
-        var prof = await _db.Professores.FindAsync(id);
-        return prof == null ? NotFound() : prof;
-    }
-
+    // POST: /api/Professores
     [HttpPost]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<ActionResult<Professor>> Create([FromBody] Professor professor)
     {
-        if (!ModelState.IsValid) return BadRequest(ModelState);
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
+        // Salva o professor primeiro
         _db.Professores.Add(professor);
         await _db.SaveChangesAsync();
 
-        // Cria usuário para login do professor + envia e-mail
+        // Cria usuário vinculado + e-mail com credenciais
         try
         {
             var username = await GerarUsernameUnicoAsync(professor.Nome);
@@ -112,11 +115,11 @@ public class ProfessoresController : ControllerBase
             _db.Usuarios.Add(usuario);
             await _db.SaveChangesAsync();
 
-            // vincula professor ao usuário criado
+            // vincula o professor ao usuário criado
             professor.UsuarioId = usuario.Id;
             await _db.SaveChangesAsync();
 
-            var assunto = "Cadastro no Portal EduConnect (Professor)";
+            var assunto = "Acesso ao Portal EduConnect (Professor)";
             var mensagem =
                 $"Olá {professor.Nome},\n\n" +
                 $"Você foi cadastrado como professor da disciplina \"{professor.Disciplina}\" no Portal EduConnect.\n\n" +
@@ -124,53 +127,82 @@ public class ProfessoresController : ControllerBase
                 $"Usuário: {username}\n" +
                 $"Senha provisória: {senhaPlano}\n\n" +
                 "No primeiro acesso você será solicitado a definir uma nova senha.\n\n" +
-                "Bons estudos com sua turma!";
+                "Bons estudos com sua turma!\nPortal EduConnect";
 
             await _email.EnviarAsync(professor.Email, assunto, mensagem);
         }
         catch
         {
-            // se falhar o envio ou criação de usuário, não quebra o cadastro do professor
+            // se der erro ao criar usuário ou enviar e-mail,
+            // o professor continua cadastrado; aqui você poderia logar o erro
         }
 
         return CreatedAtAction(nameof(GetById), new { id = professor.Id }, professor);
     }
 
+    // ======================= ATUALIZAR / EXCLUIR =======================
+
+    // PUT: /api/Professores/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Update(int id, [FromBody] Professor professor)
     {
-        if (id != professor.Id) return BadRequest();
+        if (id != professor.Id)
+            return BadRequest(new { message = "Id do caminho e do corpo não conferem." });
 
         _db.Entry(professor).State = EntityState.Modified;
-        await _db.SaveChangesAsync();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            var existe = await _db.Professores.AnyAsync(p => p.Id == id);
+            if (!existe)
+                return NotFound();
+
+            throw; // se for outro problema, deixa a exception subir
+        }
+
         return NoContent();
     }
 
+    // DELETE: /api/Professores/{id}
     [HttpDelete("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Delete(int id)
     {
-        var prof = await _db.Professores.FindAsync(id);
-        if (prof == null) return NotFound();
+        var professor = await _db.Professores.FindAsync(id);
+        if (professor == null) return NotFound();
 
-        _db.Professores.Remove(prof);
+        _db.Professores.Remove(professor);
         await _db.SaveChangesAsync();
+
+        // opcional: você poderia remover o Usuario vinculado aqui,
+        // se não quiser deixar usuário "órfão"
+
         return NoContent();
     }
 
-    // Professor logado (usando userId do token JWT)
+    // ======================= PROFESSOR LOGADO =======================
+
+    // GET: /api/Professores/me
     [HttpGet("me")]
     [Authorize(Roles = UserRoles.Professor)]
     public async Task<ActionResult<Professor>> GetMe()
     {
+        // userId vem da claim adicionada no JwtService
         var userIdStr = User.FindFirstValue("userId");
         if (string.IsNullOrWhiteSpace(userIdStr) || !int.TryParse(userIdStr, out var userId))
-            return Unauthorized();
+            return Unauthorized(new { message = "Usuário não identificado no token." });
 
         var prof = await _db.Professores
             .FirstOrDefaultAsync(p => p.UsuarioId == userId);
 
-        return prof == null ? NotFound() : prof;
+        if (prof == null)
+            return NotFound(new { message = "Professor não encontrado para o usuário logado." });
+
+        return Ok(prof);
     }
 }

@@ -6,19 +6,22 @@ public class Aluno
 {
     public int Id { get; set; }
 
-    [Required]
-    public string Nome { get; set; } = null!;
+    [Required(ErrorMessage = "O nome é obrigatório.")]
+    public string Nome { get; set; } = string.Empty;
 
-    [Required, EmailAddress]
-    public string Email { get; set; } = null!;
+    [Required(ErrorMessage = "O e-mail é obrigatório.")]
+    [EmailAddress(ErrorMessage = "E-mail inválido.")]
+    public string Email { get; set; } = string.Empty;
 
-    [Required]
-    public string RA { get; set; } = null!;
+    [Required(ErrorMessage = "O RA é obrigatório.")]
+    public string RA { get; set; } = string.Empty;
 
-    [Required]
-    public string Turma { get; set; } = null!;
+    [Required(ErrorMessage = "A turma é obrigatória.")]
+    public string Turma { get; set; } = string.Empty;
 
+    [Required(ErrorMessage = "A data de nascimento é obrigatória.")]
     public DateTime DataNascimento { get; set; }
 
-    public ICollection<Nota> Notas { get; set; } = new List<Nota>();
+    // Navegação: todas as notas do aluno
+    public List<Nota> Notas { get; set; } = new();
 }

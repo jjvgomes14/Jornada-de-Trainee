@@ -1,10 +1,10 @@
 ﻿using System.Security.Claims;
 using EduConnect.Api.Data;
 using EduConnect.Api.Models;
+using EduConnect.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using EduConnect.Api.Services;
 
 namespace EduConnect.Api.Controllers;
 
@@ -21,27 +21,35 @@ public class AlunosController : ControllerBase
         _email = email;
     }
 
+    // ======================= LISTAGEM BÁSICA =======================
+
+    // GET: /api/Alunos
     [HttpGet]
     [Authorize]
     public async Task<ActionResult<IEnumerable<Aluno>>> GetAll()
     {
-        var lista = await _db.Alunos.AsNoTracking().ToListAsync();
-        return Ok(lista);
+        var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
+        return Ok(alunos);
     }
 
+    // GET: /api/Alunos/{id}
     [HttpGet("{id:int}")]
     [Authorize]
     public async Task<ActionResult<Aluno>> GetById(int id)
     {
         var aluno = await _db.Alunos.FindAsync(id);
-        return aluno == null ? NotFound() : aluno;
+        if (aluno == null) return NotFound();
+
+        return Ok(aluno);
     }
 
-    // Helpers para usuário/senha
-    private string GerarUsernameBasico(string nomeCompleto)
+    // ======================= HELPERS PRIVADOS =======================
+
+    // Ex.: "Maria Silva Souza" -> "msouza"
+    private static string GerarUsernameBasico(string nomeCompleto)
     {
         if (string.IsNullOrWhiteSpace(nomeCompleto))
-            throw new ArgumentException("Nome inválido.");
+            throw new ArgumentException("Nome inválido.", nameof(nomeCompleto));
 
         var partes = nomeCompleto
             .Trim()
@@ -70,21 +78,28 @@ public class AlunosController : ControllerBase
         return username;
     }
 
-    private string GerarSenhaAleatoria()
+    private static string GerarSenhaAleatoria(int tamanho = 10)
     {
-        return Guid.NewGuid().ToString("N")[..10];
+        // Pega só os primeiros N caracteres de um GUID sem traços
+        return Guid.NewGuid()
+            .ToString("N")
+            .Substring(0, tamanho);
     }
 
+    // ======================= CRIAR ALUNO =======================
+
+    // POST: /api/Alunos
     [HttpPost]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<ActionResult<Aluno>> Create([FromBody] Aluno aluno)
     {
-        if (!ModelState.IsValid) return BadRequest(ModelState);
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
         _db.Alunos.Add(aluno);
         await _db.SaveChangesAsync();
 
-        // Cria usuário para login do aluno
+        // Cria usuário para o aluno e tenta enviar e-mail de boas-vindas
         try
         {
             var username = await GerarUsernameUnicoAsync(aluno.Nome);
@@ -101,7 +116,6 @@ public class AlunosController : ControllerBase
             _db.Usuarios.Add(usuario);
             await _db.SaveChangesAsync();
 
-            // Envia e-mail com credenciais
             var assunto = "Acesso ao Portal EduConnect";
             var mensagem =
                 $"Olá {aluno.Nome},\n\n" +
@@ -115,23 +129,41 @@ public class AlunosController : ControllerBase
         }
         catch
         {
-            // Se der problema no envio ou criação de usuário, não quebra o cadastro do aluno.
+            // Se der problema em usuário/e-mail, não falha o cadastro do aluno.
+            // Você pode logar esse erro com algum logger se quiser.
         }
 
         return CreatedAtAction(nameof(GetById), new { id = aluno.Id }, aluno);
     }
 
+    // ======================= ATUALIZAR / EXCLUIR =======================
+
+    // PUT: /api/Alunos/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Update(int id, [FromBody] Aluno aluno)
     {
-        if (id != aluno.Id) return BadRequest();
+        if (id != aluno.Id)
+            return BadRequest(new { message = "Id do caminho e do corpo não conferem." });
 
         _db.Entry(aluno).State = EntityState.Modified;
-        await _db.SaveChangesAsync();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!await _db.Alunos.AnyAsync(a => a.Id == id))
+                return NotFound();
+
+            throw; // deixa a exception subir se for outro problema
+        }
+
         return NoContent();
     }
 
+    // DELETE: /api/Alunos/{id}
     [HttpDelete("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Delete(int id)
@@ -141,38 +173,41 @@ public class AlunosController : ControllerBase
 
         _db.Alunos.Remove(aluno);
         await _db.SaveChangesAsync();
+
         return NoContent();
     }
 
+    // ======================= TURMAS =======================
+
+    // GET: /api/Alunos/turmas
     [HttpGet("turmas")]
     [Authorize]
     public async Task<ActionResult<IEnumerable<string>>> GetTurmas()
     {
         var turmas = await _db.Alunos
             .Select(a => a.Turma)
+            .Where(t => t != null && t != "")
             .Distinct()
             .OrderBy(t => t)
             .ToListAsync();
+
         return Ok(turmas);
     }
 
-    // Aluno logado (para gráfico futuro, se quiser)
+    // ======================= ALUNO LOGADO =======================
+
+    // GET: /api/Alunos/me
     [HttpGet("me")]
-    [Authorize(Roles = UserRoles.Aluno)]
-    public async Task<ActionResult<Aluno>> GetMe()
+    [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
+    public async Task<ActionResult<Aluno>> GetAlunoLogado()
     {
-        var username = User.Identity?.Name
-                       ?? User.FindFirstValue(ClaimTypes.Name)
-                       ?? User.FindFirstValue("sub");
-
+        // Username vem do token (ClaimTypes.Name configurado no JwtService)
+        var username = User.FindFirstValue(ClaimTypes.Name);
         if (string.IsNullOrWhiteSpace(username))
-            return Unauthorized();
+            return Unauthorized(new { message = "Usuário não identificado no token." });
 
-        username = username.Trim();
-
-        // Carrega todos os alunos em memória para podermos usar GerarUsernameBasico
+        // Carrega todos os alunos em memória pra fazer as combinações de match
         var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
-
 
         var aluno = alunos.FirstOrDefault(a =>
             string.Equals(a.Email, username, StringComparison.OrdinalIgnoreCase) ||
@@ -183,11 +218,14 @@ public class AlunosController : ControllerBase
         );
 
         if (aluno == null)
-            return NotFound();
+            return NotFound(new { message = "Não foi possível associar o usuário logado a um aluno." });
 
         return Ok(aluno);
     }
 
+    // ======================= MÉDIA DO ALUNO =======================
+
+    // GET: /api/Alunos/{id}/media
     [HttpGet("{id:int}/media")]
     [Authorize]
     public async Task<ActionResult<decimal>> GetMedia(int id)
@@ -197,9 +235,10 @@ public class AlunosController : ControllerBase
             .Select(n => n.Valor)
             .ToListAsync();
 
-        if (!notas.Any()) return Ok(0m);
+        if (!notas.Any())
+            return Ok(0m);
 
         var media = notas.Average();
-        return Ok(Math.Round(media, 2));
+        return Ok(Math.Round((decimal)media, 2));
     }
 }

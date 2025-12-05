@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore;
 
 namespace EduConnect.Api.Models;
 
@@ -7,18 +6,24 @@ public class Nota
 {
     public int Id { get; set; }
 
-    [Range(0, 10)]
-    [Precision(5, 2)] // evita warning de truncamento
+    [Required]
+    public int AlunoId { get; set; }
+
+    [Required]
+    public int ProfessorId { get; set; }
+
+    [Required]
+    public int DisciplinaId { get; set; }
+
+    [Required]
+    [Range(0, 10, ErrorMessage = "A nota deve estar entre 0 e 10.")]
     public decimal Valor { get; set; }
 
-    public DateTime DataLancamento { get; set; } = DateTime.UtcNow;
+    [Required]
+    public DateTime DataLancamento { get; set; }
 
-    public int AlunoId { get; set; }
+    // Navegações
     public Aluno? Aluno { get; set; }
-
-    public int DisciplinaId { get; set; }
-    public Disciplina? Disciplina { get; set; }
-
-    public int ProfessorId { get; set; }
     public Professor? Professor { get; set; }
+    public Disciplina? Disciplina { get; set; }
 }
