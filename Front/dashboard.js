@@ -358,41 +358,65 @@
 
   mostrarSecao('sec-home');
 
-  // Cadastro Aluno/Professor
+  // Cadastro de Professor (apenas)
   const btnTipoAluno = document.getElementById('btnTipoAluno');
   const btnTipoProfessor = document.getElementById('btnTipoProfessor');
   const tituloCadastro = document.getElementById('tituloCadastro');
-  const grupoCadastroAluno = document.getElementById('grupoCadastroAluno');
-  const grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
 
   const formCadastro = document.getElementById('formCadastro');
   const cadNome = document.getElementById('cadNome');
   const cadEmail = document.getElementById('cadEmail');
-  const cadRA = document.getElementById('cadRA');
-  const cadTurma = document.getElementById('cadTurma');
   const cadDisc = document.getElementById('cadDisc');
   const fbCadastro = document.getElementById('fbCadastro');
+  const grupoCadastroProfessor = document.getElementById('grupoCadastroProfessor');
+  const blocoMatriculasPendentes = document.getElementById('blocoMatriculasPendentes');
 
   let tipoCadastroAtual = 'aluno';
 
   function atualizarTipoCadastro(tipo) {
     tipoCadastroAtual = tipo;
+
     if (tipo === 'aluno') {
-      if (btnTipoAluno) btnTipoAluno.classList.replace('btn-outline-primary', 'btn-primary');
-      if (btnTipoProfessor) btnTipoProfessor.classList.replace('btn-primary', 'btn-outline-primary');
-      if (grupoCadastroAluno) grupoCadastroAluno.classList.remove('d-none');
+      // Estilo dos botões
+      if (btnTipoAluno) {
+        btnTipoAluno.classList.remove('btn-outline-primary');
+        btnTipoAluno.classList.add('btn-primary', 'active');
+      }
+      if (btnTipoProfessor) {
+        btnTipoProfessor.classList.remove('btn-primary', 'active');
+        btnTipoProfessor.classList.add('btn-outline-primary');
+      }
+
+      // Mostra só matrículas pendentes
+      if (formCadastro) formCadastro.classList.add('d-none');
       if (grupoCadastroProfessor) grupoCadastroProfessor.classList.add('d-none');
-      if (tituloCadastro) tituloCadastro.textContent = 'Cadastrar Aluno';
+      if (blocoMatriculasPendentes) blocoMatriculasPendentes.classList.remove('d-none');
+
+      if (tituloCadastro) tituloCadastro.textContent = 'Matrículas pendentes';
     } else {
-      if (btnTipoProfessor) btnTipoProfessor.classList.replace('btn-outline-primary', 'btn-primary');
-      if (btnTipoAluno) btnTipoAluno.classList.replace('btn-primary', 'btn-outline-primary');
+      // Estilo dos botões
+      if (btnTipoProfessor) {
+        btnTipoProfessor.classList.remove('btn-outline-primary');
+        btnTipoProfessor.classList.add('btn-primary', 'active');
+      }
+      if (btnTipoAluno) {
+        btnTipoAluno.classList.remove('btn-primary', 'active');
+        btnTipoAluno.classList.add('btn-outline-primary');
+      }
+
+      // Mostra só o formulário de professor
+      if (formCadastro) formCadastro.classList.remove('d-none');
       if (grupoCadastroProfessor) grupoCadastroProfessor.classList.remove('d-none');
-      if (grupoCadastroAluno) grupoCadastroAluno.classList.add('d-none');
+      if (blocoMatriculasPendentes) blocoMatriculasPendentes.classList.add('d-none');
+
       if (tituloCadastro) tituloCadastro.textContent = 'Cadastrar Professor';
     }
+
+
     setMsg(fbCadastro, '');
   }
 
+  // Clique nos botões de toggle
   if (btnTipoAluno) {
     btnTipoAluno.addEventListener('click', () => atualizarTipoCadastro('aluno'));
   }
@@ -404,46 +428,35 @@
     e.preventDefault();
     setMsg(fbCadastro, '');
 
+    // Se não estiver na aba Professor, não faz nada
+    if (tipoCadastroAtual !== 'professor') return;
+
     const nome = (cadNome?.value || '').trim();
     const email = (cadEmail?.value || '').trim();
+    const disciplina = (cadDisc?.value || '').trim();
 
     if (!nome || !email) {
       setMsg(fbCadastro, 'Informe nome e e-mail.', 'erro');
       return;
     }
 
+    if (!disciplina) {
+      setMsg(fbCadastro, 'Selecione a disciplina do professor.', 'erro');
+      return;
+    }
+
     try {
-      let novo = null;
-      if (tipoCadastroAtual === 'aluno') {
-        const ra = (cadRA?.value || '').trim();
-        const turma = (cadTurma?.value || '').trim();
-        if (!ra || !turma) {
-          setMsg(fbCadastro, 'Informe RA e turma para o aluno.', 'erro');
-          return;
-        }
-        novo = await api('/Alunos', {
-          method: 'POST',
-          body: JSON.stringify({ nome, email, ra, turma })
-        });
-        state.alunos.push(novo);
-      } else {
-        const disciplina = (cadDisc?.value || '').trim();
-        if (!disciplina) {
-          setMsg(fbCadastro, 'Selecione a disciplina do professor.', 'erro');
-          return;
-        }
-        novo = await api('/Professores', {
-          method: 'POST',
-          body: JSON.stringify({ nome, email, disciplina })
-        });
-        state.professores.push(novo);
-      }
+      const novo = await api('/Professores', {
+        method: 'POST',
+        body: JSON.stringify({ nome, email, disciplina })
+      });
+
+      state.professores.push(novo);
 
       if (formCadastro) formCadastro.reset();
       atualizarListagem();
-      atualizarTurmasFiltros();
-      atualizarGraficos();
-      setMsg(fbCadastro, 'Cadastro salvo com sucesso.', 'ok');
+      atualizarFiltroDisciplinas();
+      setMsg(fbCadastro, 'Professor cadastrado com sucesso.', 'ok');
     } catch (err) {
       console.error(err);
       setMsg(fbCadastro, err.message || 'Erro ao salvar cadastro.', 'erro');
@@ -453,6 +466,7 @@
   if (formCadastro) {
     formCadastro.addEventListener('submit', salvarCadastro);
   }
+
 
   // ==============LISTAGEM=============
   const buscaNome = document.getElementById('buscaNome');
@@ -675,7 +689,21 @@
       if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.add('d-none');
       modalEditarPessoaTitulo.textContent = 'Editar aluno';
     } else {
-      if (edicaoDisciplina) edicaoDisciplina.value = obj.disciplina || '';
+      const disc = obj.disciplina || '';
+
+      if (edicaoDisciplina) {
+        // garante que a disciplina atual exista na lista do select
+        let opt = Array.from(edicaoDisciplina.options)
+          .find(o => o.value === disc || o.text === disc);
+
+        if (!opt && disc) {
+          const extra = new Option(disc, disc);
+          edicaoDisciplina.add(extra);
+        }
+
+        edicaoDisciplina.value = disc;
+      }
+
       if (grupoEdicaoProfessor) grupoEdicaoProfessor.classList.remove('d-none');
       if (grupoEdicaoAluno) grupoEdicaoAluno.classList.add('d-none');
       modalEditarPessoaTitulo.textContent = 'Editar professor';
@@ -684,6 +712,7 @@
     setMsg(fbEdicaoPessoa, '');
     modalEditarPessoa.show();
   }
+
 
   async function salvarEdicaoPessoa() {
     if (!state.pessoaEdicao) return;
@@ -700,22 +729,41 @@
       if (tipo === 'aluno') {
         const ra = (edicaoRA?.value || '').trim();
         const turma = (edicaoTurma?.value || '').trim();
-        const body = { nome, email, ra, turma };
-        const atual = await api(`/Alunos/${id}`, {
+
+        const body = { id, nome, email, ra, turma };
+
+        // API não retorna corpo (204)
+        await api(`/Alunos/${id}`, {
           method: 'PUT',
           body: JSON.stringify(body)
         });
+
+        // Atualiza o array em memória
         const idx = state.alunos.findIndex(a => a.id === id);
-        if (idx >= 0) state.alunos[idx] = atual;
+        if (idx >= 0) {
+          state.alunos[idx] = {
+            ...state.alunos[idx],
+            ...body
+          };
+        }
       } else {
         const disciplina = (edicaoDisciplina?.value || '').trim();
-        const body = { nome, email, disciplina };
-        const atualP = await api(`/Professores/${id}`, {
+        const body = { id, nome, email, disciplina };
+
+        // API não retorna corpo (204)
+        await api(`/Professores/${id}`, {
           method: 'PUT',
           body: JSON.stringify(body)
         });
+
+        // Atualiza o array em memória
         const idxP = state.professores.findIndex(p => p.id === id);
-        if (idxP >= 0) state.professores[idxP] = atualP;
+        if (idxP >= 0) {
+          state.professores[idxP] = {
+            ...state.professores[idxP],
+            ...body
+          };
+        }
       }
 
       setMsg(fbEdicaoPessoa, 'Registro atualizado com sucesso.', 'ok');
@@ -728,6 +776,7 @@
       setMsg(fbEdicaoPessoa, err.message || 'Erro ao atualizar registro.', 'erro');
     }
   }
+
 
   if (btnSalvarEdicaoPessoa) {
     btnSalvarEdicaoPessoa.addEventListener('click', salvarEdicaoPessoa);
@@ -745,26 +794,59 @@
     modalConfirmacao.show();
   }
 
+  function abrirConfirmacaoExclusaoEvento() {
+    if (!modalConfirmacao || !modalConfirmacaoMensagem || !modalConfirmacaoTitulo) return;
+
+    const idStr = (eventoId?.value || '').trim();
+    if (!idStr) return;
+
+    const id = parseInt(idStr, 10);
+    const titulo = (eventoTitulo?.value || '').trim() || 'este evento';
+
+    // guarda o alvo para o botão "Confirmar"
+    state.alvoExclusao = { tipo: 'evento', id };
+
+    // 👉 fecha o modal de evento ANTES de abrir o de confirmação
+    if (modalEvento) modalEvento.hide();
+
+    modalConfirmacaoTitulo.textContent = 'Excluir evento';
+    modalConfirmacaoMensagem.textContent =
+      `Tem certeza que deseja excluir "${titulo}"? Esta ação não poderá ser desfeita.`;
+
+    modalConfirmacao.show();
+  }
+
+
   async function efetivarExclusao() {
     if (!state.alvoExclusao) return;
     const { tipo, id } = state.alvoExclusao;
+
     try {
       if (tipo === 'aluno') {
         await api(`/Alunos/${id}`, { method: 'DELETE' });
         state.alunos = state.alunos.filter(a => a.id !== id);
-      } else {
+        atualizarListagem();
+        atualizarTurmasFiltros();
+        atualizarFiltroDisciplinas();
+      } else if (tipo === 'professor') {
         await api(`/Professores/${id}`, { method: 'DELETE' });
         state.professores = state.professores.filter(p => p.id !== id);
+        atualizarListagem();
+        atualizarTurmasFiltros();
+        atualizarFiltroDisciplinas();
+      } else if (tipo === 'evento') {
+        await api(`/Eventos/${id}`, { method: 'DELETE' });
+        if (state.calendar) state.calendar.refetchEvents();
+        // modalEvento já foi fechado lá em cima
       }
-      atualizarListagem();
-      atualizarTurmasFiltros();
-      atualizarFiltroDisciplinas();
-      modalConfirmacao && modalConfirmacao.hide();
+
+      if (modalConfirmacao) modalConfirmacao.hide();
     } catch (err) {
       console.error(err);
       alert(err.message || 'Erro ao excluir registro.');
     }
   }
+
 
   if (btnConfirmarExclusao) {
     btnConfirmarExclusao.addEventListener('click', efetivarExclusao);
@@ -849,23 +931,31 @@
       const mediaAluno = media(notasAluno.map(n => Number(n.valor)));
 
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${a.nome}</td>
-        <td>
-          ${chips}
-          <div class="input-group input-group-sm mt-2" style="max-width:180px;">
-            <input type="number" class="form-control form-control-sm"
-                   min="0" max="10" step="0.1"
-                   placeholder="Ex.: 7.5"
-                   data-acao="nova-nota-input"
-                   data-aluno-id="${a.id}">
-            <button class="btn btn-primary btn-add-nota"
-                    data-acao="add-nota"
-                    data-aluno-id="${a.id}">Adicionar</button>
-          </div>
-        </td>
-        <td>${mediaAluno == null ? '—' : mediaAluno.toFixed(2)}</td>`;
-      tbodyNotas.appendChild(tr);
+        tr.innerHTML = `
+          <td>${a.nome}</td>
+
+          <td>
+            ${chips}
+          </td>
+
+          <td>
+            <div class="input-group input-group-sm" style="max-width:180px;">
+              <input type="number" class="form-control form-control-sm"
+                    min="0" max="10" step="0.1"
+                    placeholder="Ex.: 7.5"
+                    data-acao="nova-nota-input"
+                    data-aluno-id="${a.id}">
+              <button class="btn btn-primary btn-add-nota"
+                      data-acao="add-nota"
+                      data-aluno-id="${a.id}">Adicionar</button>
+            </div>
+          </td>
+
+          <td class="text-center">
+            ${mediaAluno == null ? '—' : mediaAluno.toFixed(2)}
+          </td>
+        `;
+        tbodyNotas.appendChild(tr);
     });
   }
 
@@ -932,6 +1022,7 @@
   async function atualizarGraficos() {
     if (!chartCanvas) return;
 
+    // Destroi o gráfico anterior (se existir)
     if (state.chartNotas) {
       state.chartNotas.destroy();
       state.chartNotas = null;
@@ -991,6 +1082,9 @@
       if (tituloGraficos) tituloGraficos.textContent = titulo;
       if (subtituloGraficos) subtituloGraficos.textContent = subtitulo;
 
+      // 🔧 garante que o canvas resete antes de criar o gráfico
+      chartCanvas.height = chartCanvas.height;
+
       const ctx = chartCanvas.getContext('2d');
       state.chartNotas = new Chart(ctx, {
         type: 'bar',
@@ -1003,7 +1097,7 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
+          maintainAspectRatio: false,   // deixa o Chart usar 100% da altura do container
           scales: {
             y: {
               beginAtZero: true,
@@ -1017,6 +1111,7 @@
       setMsg(grafMsg, err.message || 'Erro ao carregar gráficos.', 'erro');
     }
   }
+
 
   if (selTurmaGraficos && isAdmin) {
     selTurmaGraficos.addEventListener('change', atualizarGraficos);
@@ -1083,24 +1178,11 @@
     }
   }
 
-  async function excluirEvento() {
-    if (!isProfessor && !isAdmin) return;
-    const id = (eventoId?.value || '').trim();
-    if (!id) return;
-
-    if (!confirm('Excluir este evento?')) return;
-    try {
-      await api(`/Eventos/${id}`, { method: 'DELETE' });
-      if (state.calendar) state.calendar.refetchEvents();
-      modalEvento && modalEvento.hide();
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Erro ao excluir evento.');
-    }
+  if (btnSalvarEvento) btnSalvarEvento.addEventListener('click', salvarEvento);
+  if (btnExcluirEvento) {
+    btnExcluirEvento.addEventListener('click', abrirConfirmacaoExclusaoEvento);
   }
 
-  if (btnSalvarEvento) btnSalvarEvento.addEventListener('click', salvarEvento);
-  if (btnExcluirEvento) btnExcluirEvento.addEventListener('click', excluirEvento);
 
   function initCalendario() {
     if (!calendarioEl || !window.FullCalendar) return;
@@ -1113,6 +1195,7 @@
       initialView: 'dayGridMonth',
       height: 'auto',
       locale: 'pt-br',
+      displayEventTime: false,
       events: async function (info, success, failure) {
         try {
           const dados = await api('/Eventos') || [];

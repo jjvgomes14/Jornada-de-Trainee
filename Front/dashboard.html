@@ -79,7 +79,8 @@
     <section id="sec-cadastro" class="sec d-none">
       <div class="card p-3 shadow-sm">
         <div class="d-flex align-items-center justify-content-between mb-3">
-          <h5 class="mb-0" id="tituloCadastro">Cadastrar Aluno</h5>
+          <!-- Título muda via JS -->
+          <h5 class="mb-0" id="tituloCadastro">Matrículas pendentes</h5>
 
           <div class="btn-group btn-group-sm">
             <button type="button" class="btn btn-primary active" id="btnTipoAluno">
@@ -91,18 +92,12 @@
           </div>
         </div>
 
-        <form id="formCadastro" class="vstack gap-2">
-          <input class="form-control" id="cadNome" placeholder="Nome completo"/>
+        <!-- FORMULÁRIO APENAS PARA PROFESSOR (começa escondido) -->
+        <form id="formCadastro" class="vstack gap-2 d-none">
+          <input class="form-control" id="cadNome" placeholder="Nome completo" />
           <input class="form-control" id="cadEmail" placeholder="E-mail institucional" />
 
-          <!-- Campos de Aluno -->
-          <div id="grupoCadastroAluno" class="vstack gap-2">
-            <input class="form-control" id="cadRA" placeholder="RA"/>
-            <input class="form-control" id="cadTurma" placeholder="Turma (ex.: 3ºB)" />
-          </div>
-
-          <!-- Campode de Professor -->
-          <div id="grupoCadastroProfessor" class="vstack gap-2 d-none">
+          <div id="grupoCadastroProfessor" class="vstack gap-2">
             <select class="form-select" id="cadDisc">
               <option value="">Selecione a disciplina</option>
               <option>Matemática</option>
@@ -121,7 +116,7 @@
           <div id="fbCadastro" class="small mt-1"></div>
         </form>
 
-        <!-- Matrículas Pendentes -->
+        <!-- MATRÍCULAS PENDENTES (mostra só quando o tipo = Aluno) -->
         <div id="blocoMatriculasPendentes" class="mt-3">
           <h6 class="mb-1">Matrículas pendentes</h6>
           <p class="small text-body-secondary mb-2">
@@ -146,6 +141,8 @@
         </div>
       </div>
     </section>
+
+
 
     <!-- LISTAGEM -->
     <section id="sec-listagem" class="sec d-none">
@@ -228,25 +225,23 @@
 
     <!-- GRÁFICOS -->
     <section id="sec-graficos" class="sec d-none">
-      <div class="card p-3 shadow-sm">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <div>
-            <h5 class="m-0" id="tituloGraficos">Gráficos de desempenho</h5>
-            <p class="small text-body-secondary mb-0" id="subtituloGraficos"></p>
-          </div>
+      <div class="card p-3 shadow-sm h-100">
+        <h5 id="tituloGraficos" class="mb-0">Gráficos de desempenho</h5>
+        <p id="subtituloGraficos" class="text-body-secondary small mb-2"></p>
 
-          <div class="d-flex align-items-center gap-2" id="wrapFiltroTurmaGraficos">
-            <label class="small text-body-secondary mb-0">Turma:</label>
-            <select id="selTurmaGraficos" class="form-select form-select-sm" style="min-width: 180px;">
-              <option value="__todas__">Todas</option>
-            </select>
-          </div>
+        <div class="mb-2" id="wrapFiltroTurmaGraficos">
+          <label class="form-label small mb-1" for="selTurmaGraficos">Turma</label>
+          <select id="selTurmaGraficos" class="form-select form-select-sm"></select>
         </div>
 
-        <canvas id="chartNotas" height="120"></canvas>
-        <div id="grafMsg" class="small text-body-secondary mt-2"></div>
+        <div class="position-relative" style="height: 320px; max-height: 320px;">
+          <canvas id="chartNotas"></canvas>
+        </div>
+
+        <div id="grafMsg" class="small mt-2"></div>
       </div>
     </section>
+
 
     <!-- CALENDÁRIO -->
     <section id="sec-calendario" class="sec d-none">
@@ -278,9 +273,10 @@
           <table class="table table-sm align-middle mb-0">
             <thead>
               <tr>
-                <th style="min-width: 220px;">Aluno</th>
+                <th>Aluno</th>
                 <th>Notas</th>
-                <th style="width: 180px;">Nova nota</th>
+                <th>Nova nota</th>
+                <th>Média</th>
               </tr>
             </thead>
             <tbody id="tbodyNotas"></tbody>
@@ -446,7 +442,18 @@
               <label class="form-label small" for="edicaoDisciplina">
                 Disciplina
               </label>
-              <input type="text" id="edicaoDisciplina" class="form-control form-control-sm"/>
+              <select id="edicaoDisciplina" class="form-select form-select-sm">
+                <option value="">Selecione a disciplina</option>
+                <option>Matemática</option>
+                <option>Química</option>
+                <option>Física</option>
+                <option>Biologia</option>
+                <option>Geografia</option>
+                <option>História</option>
+                <option>Filosofia</option>
+                <option>Sociologia</option>
+                <option>Português</option>
+              </select>
             </div>
           </div>
 

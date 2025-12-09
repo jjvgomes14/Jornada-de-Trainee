@@ -52,7 +52,8 @@ namespace EduConnect.API.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RA")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Aluno_RA");
 
                     b.ToTable("Alunos");
                 });
@@ -123,8 +124,7 @@ namespace EduConnect.API.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("Valor")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 
@@ -137,71 +137,7 @@ namespace EduConnect.API.Migrations
                     b.ToTable("Notas");
                 });
 
-            modelBuilder.Entity("EduConnect.Api.Models.SolicitacaoMatricula", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataNascimento")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Observacao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SolicitacoesMatricula");
-                });
-
-            modelBuilder.Entity("EduConnect.Api.Models.Usuario", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("PrimeiroAcesso")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Username")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Username")
-                        .IsUnique();
-
-                    b.ToTable("Usuarios");
-                });
-
-            modelBuilder.Entity("Professor", b =>
+            modelBuilder.Entity("EduConnect.Api.Models.Professor", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -234,13 +170,78 @@ namespace EduConnect.API.Migrations
                     b.ToTable("Professores");
                 });
 
+            modelBuilder.Entity("EduConnect.Api.Models.SolicitacaoMatricula", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DataNascimento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Observacao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SolicitacoesMatricula");
+                });
+
+            modelBuilder.Entity("EduConnect.Api.Models.Usuario", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("PrimeiroAcesso")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Usuario_Username");
+
+                    b.ToTable("Usuarios");
+                });
+
             modelBuilder.Entity("EduConnect.Api.Models.EventoCalendario", b =>
                 {
-                    b.HasOne("Professor", "Professor")
+                    b.HasOne("EduConnect.Api.Models.Professor", null)
                         .WithMany()
-                        .HasForeignKey("ProfessorId");
-
-                    b.Navigation("Professor");
+                        .HasForeignKey("ProfessorId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("EduConnect.Api.Models.Nota", b =>
@@ -257,7 +258,7 @@ namespace EduConnect.API.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Professor", "Professor")
+                    b.HasOne("EduConnect.Api.Models.Professor", "Professor")
                         .WithMany()
                         .HasForeignKey("ProfessorId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -270,13 +271,12 @@ namespace EduConnect.API.Migrations
                     b.Navigation("Professor");
                 });
 
-            modelBuilder.Entity("Professor", b =>
+            modelBuilder.Entity("EduConnect.Api.Models.Professor", b =>
                 {
-                    b.HasOne("EduConnect.Api.Models.Usuario", "Usuario")
+                    b.HasOne("EduConnect.Api.Models.Usuario", null)
                         .WithMany()
-                        .HasForeignKey("UsuarioId");
-
-                    b.Navigation("Usuario");
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("EduConnect.Api.Models.Aluno", b =>
