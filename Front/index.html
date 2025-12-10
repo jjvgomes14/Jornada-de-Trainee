@@ -17,7 +17,7 @@
   <div class="login-caixa shadow p-4 bg-body" style="width: 100%; max-width: 380px;">
     <h4 class="text-center mb-3">EduConnect</h4>
 
-    <!-- FORM LOGIN -->
+    <!-- Form de Login -->
     <form id="formLogin" class="vstack gap-2">
       <div>
         <input id="usuario" class="form-control" placeholder="Usuário">
@@ -33,17 +33,15 @@
       <div id="feedback" class="small mt-2 text-center"></div>
     </form>
 
+    <!-- Botão matricula -->
+    <div class="text-center mt-3">
+      <button class="btn btn-primary w-80 mt-2" data-bs-toggle="modal" data-bs-target="#modalMatricula">Matricule-se já</button>
+    </div>
+
     <!-- Switch tema -->
     <div class="form-check form-switch small mt-3 text-center">
       <input class="form-check-input" type="checkbox" id="switchTema">
       <label class="form-check-label" for="switchTema" id="labelTema">Modo claro</label>
-    </div>
-
-    <!-- Botão matricula -->
-    <div class="text-center mt-3">
-      <button class="btn btn-link small" data-bs-toggle="modal" data-bs-target="#modalMatricula">
-        Matricule-se já
-      </button>
     </div>
   </div>
 
@@ -61,7 +59,18 @@
             <input id="matNome" class="form-control" placeholder="Nome completo">
             <input id="matEmail" type="email" class="form-control" placeholder="E-mail">
             <input id="matDataNasc" type="date" class="form-control">
+            <input id="matRG" class="form-control" placeholder="RG">
+            <input id="matCPF" class="form-control" placeholder="CPF">
+            <input id="matCelular" class="form-control" type="tel" maxlength="13" placeholder="Celular">
 
+            <h2 class="titulo-secao">Endereço</h2>
+            <input id="matCEP" class="form-control" maxlength="9" placeholder="CEP">
+            <input id="matEstado" class="form-control" placeholder="UF">
+            <input id="matCidade" class="form-control" placeholder="Cidade">
+            <input id="matBairro" class="form-control" placeholder="Bairro">
+            <input id="matRua" class="form-control" placeholder="Rua">
+            <input id="matCasa" class="form-control" placeholder="Número">
+            
             <div id="fbMatricula" class="small mt-1"></div>
 
             <button type="submit" class="btn btn-primary mt-2">Enviar solicitação</button>

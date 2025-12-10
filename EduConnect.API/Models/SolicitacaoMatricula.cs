@@ -1,5 +1,6 @@
-﻿namespace EduConnect.Api.Models;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace EduConnect.Api.Models;
 
 public enum StatusMatricula
 {
@@ -7,6 +8,7 @@ public enum StatusMatricula
     Aprovada = 1,
     Rejeitada = 2
 }
+
 public class SolicitacaoMatricula
 {
     public int Id { get; set; }
@@ -20,6 +22,34 @@ public class SolicitacaoMatricula
 
     [Required(ErrorMessage = "A data de nascimento é obrigatória.")]
     public DateTime DataNascimento { get; set; }
+
+    // 👇 MESMOS CAMPOS DO FRONT
+    [Required]
+    public string RG { get; set; } = string.Empty;
+
+    [Required]
+    public string CPF { get; set; } = string.Empty;
+
+    [Required]
+    public string Celular { get; set; } = string.Empty;
+
+    [Required]
+    public string CEP { get; set; } = string.Empty;
+
+    [Required]
+    public string Estado { get; set; } = string.Empty;
+
+    [Required]
+    public string Cidade { get; set; } = string.Empty;
+
+    [Required]
+    public string Bairro { get; set; } = string.Empty;
+
+    [Required]
+    public string Rua { get; set; } = string.Empty;
+
+    [Required]
+    public string NumeroCasa { get; set; } = string.Empty;
 
     // Quando a solicitação foi criada
     [Required]

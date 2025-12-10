@@ -10,10 +10,8 @@
   const erroUsuario = document.getElementById('erroUsuario');
   const erroSenha   = document.getElementById('erroSenha');
   const feedback    = document.getElementById('feedback');
-
   const switchTema  = document.getElementById('switchTema');
   const labelTema   = document.getElementById('labelTema');
-
   const formMatricula = document.getElementById('formMatricula');
   const fbMatricula   = document.getElementById('fbMatricula');
 
@@ -142,36 +140,78 @@
     e.preventDefault();
     limparFeedbackMatricula();
 
-    const nome           = document.getElementById('matNome')?.value.trim() || '';
-    const email          = document.getElementById('matEmail')?.value.trim() || '';
-    const dataNascimento = document.getElementById('matDataNasc')?.value || '';
+    const camposObrigatorios = [
+      { id: 'matNome',      nome: 'Nome completo' },
+      { id: 'matEmail',     nome: 'E-mail' },
+      { id: 'matDataNasc',  nome: 'Data de nascimento' },
+      { id: 'matRG',        nome: 'RG' },
+      { id: 'matCPF',       nome: 'CPF' },
+      { id: 'matCelular',   nome: 'Celular' },
+      { id: 'matCEP',       nome: 'CEP' },
+      { id: 'matEstado',    nome: 'UF' },
+      { id: 'matCidade',    nome: 'Cidade' },
+      { id: 'matBairro',    nome: 'Bairro' },
+      { id: 'matRua',       nome: 'Rua' },
+      { id: 'matCasa',      nome: 'Número' }
+    ];
 
-    if (!nome || !email || !dataNascimento) {
+    camposObrigatorios.forEach(c => {
+      const el = document.getElementById(c.id);
+      if (el) el.classList.remove('is-invalid');
+    });
+
+    let temErro = false;
+    camposObrigatorios.forEach(c => {
+      const el = document.getElementById(c.id);
+      const valor = (el?.value || '').trim();
+
+      if (!valor) {
+        temErro = true;
+        if (el) el.classList.add('is-invalid');
+      }
+    });
+
+    if (temErro) {
       if (fbMatricula) {
-        fbMatricula.textContent = 'Preencha todos os campos.';
-        fbMatricula.classList.add('text-danger');
+        fbMatricula.textContent = 'Preencha todos os campos para finalizar a matrícula.';
+        fbMatricula.className = 'small mt-1 text-danger';
       }
       return;
     }
+
+    //Todos campos preenchidos
+    const nome           = document.getElementById('matNome').value.trim();
+    const email          = document.getElementById('matEmail').value.trim();
+    const dataNascimento = document.getElementById('matDataNasc').value;
+
+    const rg        = document.getElementById('matRG').value.trim();
+    const cpf       = document.getElementById('matCPF').value.trim();
+    const celular   = document.getElementById('matCelular').value.trim();
+
+    const cep       = document.getElementById('matCEP').value.trim();
+    const estado    = document.getElementById('matEstado').value.trim();
+    const cidade    = document.getElementById('matCidade').value.trim();
+    const bairro    = document.getElementById('matBairro').value.trim();
+    const rua       = document.getElementById('matRua').value.trim();
+    const numeroCasa = document.getElementById('matCasa').value.trim();
 
     const btnSubmit = formMatricula.querySelector('button[type="submit"]');
     if (btnSubmit) btnSubmit.disabled = true;
 
     try {
       await apiFetch('/Matriculas/solicitar', {
-        method: 'POST',
-        body: JSON.stringify({ nome, email, dataNascimento })
-      });
+      method: 'POST',
+      body: JSON.stringify({nome, email, dataNascimento, rg, cpf, celular, cep, estado, cidade, bairro, rua, numeroCasa})
+    });
 
       if (fbMatricula) {
         fbMatricula.textContent =
           'Solicitação enviada com sucesso! Você receberá um e-mail de confirmação.';
-        fbMatricula.classList.add('text-success');
+        fbMatricula.className = 'small mt-1 text-success';
       }
 
       formMatricula.reset();
 
-      // Fecha o modal após 1s (se Bootstrap estiver carregado)
       setTimeout(() => {
         const modalEl = document.getElementById('modalMatricula');
         if (modalEl && window.bootstrap) {
@@ -184,7 +224,7 @@
       if (fbMatricula) {
         fbMatricula.textContent =
           err.message || 'Erro ao enviar solicitação. Tente novamente.';
-        fbMatricula.classList.add('text-danger');
+        fbMatricula.className = 'small mt-1 text-danger';
       }
     } finally {
       if (btnSubmit) btnSubmit.disabled = false;
@@ -194,6 +234,69 @@
   function initMatricula() {
     if (!formMatricula) return;
     formMatricula.addEventListener('submit', handleMatricula);
+  }
+
+  //Mascara do Celular
+  document.addEventListener("DOMContentLoaded", () => {
+    const telefone = document.getElementById("matCelular");
+    telefone.addEventListener("input", () => {
+        formatarTelefone(telefone);
+    });
+  });
+
+  function formatarTelefone(campo) {
+    // Remove tudo que não seja número
+    let valor = campo.value.replace(/\D/g, "");
+    valor = valor.substring(0, 11);
+    // Aplica a máscara
+    valor = valor.replace(/(\d{2})(\d)/, "$1 $2");
+    valor = valor.replace(/(\d{5})(\d)/, "$1-$2");
+    campo.value = valor;
+  }
+
+  //Mascara do CEP
+  document.addEventListener("DOMContentLoaded", () => {
+    const cepInput = document.getElementById("matCEP");
+    cepInput.addEventListener("input", () => {
+        cepInput.value = cepInput.value
+            .replace(/\D/g, "")
+            .replace(/^(\d{5})(\d)/, "$1-$2");
+    });
+    // Busca o endereço quando termina de digitar
+    cepInput.addEventListener("keyup", () => {
+        const cep = cepInput.value.replace(/\D/g, "");
+        if (cep.length === 8)
+            buscarCEP(cep);
+    });
+  });
+
+  //Buscar CEP
+  async function buscarCEP(cep) {
+    try {
+        const resposta = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const dados = await resposta.json();
+        if (dados.erro) {
+            alert("CEP não encontrado!");
+            limparCampos();
+            return;
+        }
+        document.getElementById("matRua").value     = dados.logradouro || "";
+        document.getElementById("matBairro").value = dados.bairro || "";
+        document.getElementById("matCidade").value = dados.localidade || "";
+        document.getElementById("matEstado").value = dados.uf || "";
+    }
+    catch (erro) {
+        console.error("Erro ao buscar CEP:", erro);
+        alert("Erro ao consultar o CEP.");
+        limparCampos();
+    }
+  } 
+
+  function limparCampos() {
+    document.getElementById("matRua").value     = "";
+    document.getElementById("matBairro").value = "";
+    document.getElementById("matCidade").value = "";
+    document.getElementById("matEstado").value = "";
   }
 
   // Inicialização Geral

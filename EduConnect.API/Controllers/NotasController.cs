@@ -57,6 +57,22 @@ public class NotasController : ControllerBase
         return disciplina;
     }
 
+    private static TipoAvaliacao? ConverterTipo(string? tipo)
+    {
+        if (string.IsNullOrWhiteSpace(tipo))
+            return null;
+
+        var t = tipo.Trim().ToUpperInvariant();
+
+        return t switch
+        {
+            "ATIVIDADE" => TipoAvaliacao.Atividade,
+            "P1" => TipoAvaliacao.P1,
+            "P2" => TipoAvaliacao.P2,
+            _ => null
+        };
+    }
+
     // ==========================
     // NOTAS DO PROFESSOR (LISTA)
     // ==========================
@@ -80,6 +96,7 @@ public class NotasController : ControllerBase
             {
                 id = n.Id,
                 alunoId = n.AlunoId,
+                tipo = n.Tipo.ToString(),      // <- devolve Atividade/P1/P2
                 valor = n.Valor,
                 turma = n.Aluno!.Turma,
                 disciplina = n.Disciplina!.Nome,
@@ -91,7 +108,7 @@ public class NotasController : ControllerBase
     }
 
     // ==========================
-    // LANÇAR NOTA (PROFESSOR)
+    // LANÇAR / EDITAR NOTA (PROFESSOR)
     // ==========================
 
     // POST: /api/Notas
@@ -108,6 +125,15 @@ public class NotasController : ControllerBase
         if (dto.Valor < 0 || dto.Valor > 10)
             return BadRequest(new { message = "A nota deve estar entre 0 e 10." });
 
+        var tipoAvaliacao = ConverterTipo(dto.Tipo);
+        if (tipoAvaliacao == null)
+        {
+            return BadRequest(new
+            {
+                message = "Tipo de avaliação inválido. Use: Atividade, P1 ou P2."
+            });
+        }
+
         var professor = await ObterProfessorLogadoAsync();
         if (professor == null)
             return Forbid();
@@ -118,33 +144,55 @@ public class NotasController : ControllerBase
 
         var disciplina = await ObterOuCriarDisciplinaAsync(professor.Disciplina);
 
-        var nota = new Nota
-        {
-            AlunoId = aluno.Id,
-            ProfessorId = professor.Id,
-            DisciplinaId = disciplina.Id,
-            Valor = dto.Valor,
-            DataLancamento = DateTime.UtcNow
-        };
+        // Verifica se já existe nota desse tipo para esse aluno + professor + disciplina
+        var nota = await _db.Notas.FirstOrDefaultAsync(n =>
+            n.AlunoId == aluno.Id &&
+            n.ProfessorId == professor.Id &&
+            n.DisciplinaId == disciplina.Id &&
+            n.Tipo == tipoAvaliacao.Value);
 
-        _db.Notas.Add(nota);
+        if (nota == null)
+        {
+            // Cria nova (ainda não existe)
+            nota = new Nota
+            {
+                AlunoId = aluno.Id,
+                ProfessorId = professor.Id,
+                DisciplinaId = disciplina.Id,
+                Tipo = tipoAvaliacao.Value,
+                Valor = dto.Valor,
+                DataLancamento = DateTime.UtcNow
+            };
+
+            _db.Notas.Add(nota);
+        }
+        else
+        {
+            // Atualiza a nota existente (permite editar)
+            nota.Valor = dto.Valor;
+            nota.DataLancamento = DateTime.UtcNow;
+        }
+
         await _db.SaveChangesAsync();
 
         var resposta = new
         {
             id = nota.Id,
             alunoId = nota.AlunoId,
+            tipo = nota.Tipo.ToString(),
             valor = nota.Valor,
             turma = aluno.Turma,
             disciplina = disciplina.Nome,
             data = nota.DataLancamento
         };
 
-        return CreatedAtAction(nameof(GetNotasProfessor), new { }, resposta);
+        // não faz mais sentido CreatedAt, é um "upsert"
+        return Ok(resposta);
     }
 
     // ==========================
     // REMOVER NOTA (PROFESSOR)
+    // (continua permitindo deletar, se quiser)
     // ==========================
 
     // DELETE: /api/Notas/{id}
@@ -201,13 +249,13 @@ public class NotasController : ControllerBase
     // GRÁFICO – ADMIN (POR TURMA)
     // ==========================
 
-    // GET: /api/Notas/grafico-admin?turma=3ºB
+    // GET: /api/Notas/grafico-admin?turma=1A
     [HttpGet("grafico-admin")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<ActionResult<IEnumerable<object>>> GraficoAdmin([FromQuery] string turma)
     {
         if (string.IsNullOrWhiteSpace(turma))
-            return BadRequest(new { message = "Informe a turma." });
+            return BadRequest(new { message = "Turma é obrigatória." });
 
         var turmaNormalizada = turma.Trim();
 

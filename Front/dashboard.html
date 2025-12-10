@@ -79,9 +79,7 @@
     <section id="sec-cadastro" class="sec d-none">
       <div class="card p-3 shadow-sm">
         <div class="d-flex align-items-center justify-content-between mb-3">
-          <!-- Título muda via JS -->
           <h5 class="mb-0" id="tituloCadastro">Matrículas pendentes</h5>
-
           <div class="btn-group btn-group-sm">
             <button type="button" class="btn btn-primary active" id="btnTipoAluno">
               Aluno
@@ -92,7 +90,7 @@
           </div>
         </div>
 
-        <!-- FORMULÁRIO APENAS PARA PROFESSOR (começa escondido) -->
+        <!-- Formulário apenas para professor -->
         <form id="formCadastro" class="vstack gap-2 d-none">
           <input class="form-control" id="cadNome" placeholder="Nome completo" />
           <input class="form-control" id="cadEmail" placeholder="E-mail institucional" />
@@ -116,13 +114,8 @@
           <div id="fbCadastro" class="small mt-1"></div>
         </form>
 
-        <!-- MATRÍCULAS PENDENTES (mostra só quando o tipo = Aluno) -->
+        <!-- Matrículas Pendentes -->
         <div id="blocoMatriculasPendentes" class="mt-3">
-          <h6 class="mb-1">Matrículas pendentes</h6>
-          <p class="small text-body-secondary mb-2">
-            Solicitações enviadas pelo formulário "Matricule-se já".
-          </p>
-
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
               <thead>
@@ -141,8 +134,6 @@
         </div>
       </div>
     </section>
-
-
 
     <!-- LISTAGEM -->
     <section id="sec-listagem" class="sec d-none">
@@ -226,12 +217,18 @@
     <!-- GRÁFICOS -->
     <section id="sec-graficos" class="sec d-none">
       <div class="card p-3 shadow-sm h-100">
-        <h5 id="tituloGraficos" class="mb-0">Gráficos de desempenho</h5>
-        <p id="subtituloGraficos" class="text-body-secondary small mb-2"></p>
+        <div class="d-flex justify-content-between align-items-end mb-3">
+          <!-- Título e subtítulo -->
+          <div>
+            <h5 id="tituloGraficos" class="mb-0">Gráficos de desempenho</h5>
+            <p id="subtituloGraficos" class="text-body-secondary small mb-0"></p>
+          </div>
 
-        <div class="mb-2" id="wrapFiltroTurmaGraficos">
-          <label class="form-label small mb-1" for="selTurmaGraficos">Turma</label>
-          <select id="selTurmaGraficos" class="form-select form-select-sm"></select>
+          <!-- Filtro no canto direito -->
+          <div id="wrapFiltroTurmaGraficos" style="width: 180px;">
+            <label class="form-label small mb-1" for="selTurmaGraficos">Turma</label>
+            <select id="selTurmaGraficos" class="form-select form-select-sm"></select>
+          </div>
         </div>
 
         <div class="position-relative" style="height: 320px; max-height: 320px;">
@@ -241,6 +238,8 @@
         <div id="grafMsg" class="small mt-2"></div>
       </div>
     </section>
+
+
 
 
     <!-- CALENDÁRIO -->
@@ -260,7 +259,12 @@
     <section id="sec-notas" class="sec d-none">
       <div class="card p-3 shadow-sm">
         <div class="d-flex align-items-center gap-2 mb-3">
-          <h5 class="m-0">Lançamento de notas</h5>
+          <div>
+            <h5 class="m-0">Lançamento de notas</h5>
+            <small class="text-body-secondary">
+              Cada aluno pode ter apenas 3 notas por disciplina: Atividade, P1 e P2.
+            </small>
+          </div>
           <div class="ms-auto d-flex align-items-center gap-2">
             <label class="small text-body-secondary mb-0">Turma:</label>
             <select id="selTurmaNotas" class="form-select form-select-sm" style="min-width: 180px;">
@@ -271,12 +275,13 @@
 
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
-            <thead>
+            <thead class="table-light">
               <tr>
-                <th>Aluno</th>
-                <th>Notas</th>
-                <th>Nova nota</th>
-                <th>Média</th>
+                <th style="min-width: 220px;">Aluno</th>
+                <th style="min-width: 220px;">Atividade</th>
+                <th style="min-width: 220px;">P1</th>
+                <th style="min-width: 220px;">P2</th>
+                <th class="text-center" style="width: 80px;">Média</th>
               </tr>
             </thead>
             <tbody id="tbodyNotas"></tbody>
@@ -308,23 +313,73 @@
         <div class="modal-body">
           <input type="hidden" id="cadMatId" />
 
+          <!-- Dados pessoais (somente leitura) -->
           <div class="mb-2">
             <label class="form-label small" for="cadMatNome">Nome</label>
-            <input type="text" id="cadMatNome" class="form-control form-control-sm" disabled />
+            <input type="text" id="cadMatNome" class="form-control form-control-sm" readonly />
           </div>
 
           <div class="mb-2">
             <label class="form-label small" for="cadMatEmail">E-mail</label>
-            <input type="email" id="cadMatEmail" class="form-control form-control-sm" disabled />
+            <input type="email" id="cadMatEmail" class="form-control form-control-sm" readonly />
           </div>
 
           <div class="mb-2">
             <label class="form-label small" for="cadMatDataNasc">Data de nascimento</label>
-            <input type="date" id="cadMatDataNasc" class="form-control form-control-sm" disabled />
+            <input type="date" id="cadMatDataNasc" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatRG">RG</label>
+            <input type="text" id="cadMatRG" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatCPF">CPF</label>
+            <input type="text" id="cadMatCPF" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatCelular">Celular</label>
+            <input type="text" id="cadMatCelular" class="form-control form-control-sm" readonly />
           </div>
 
           <hr class="my-3" />
 
+          <!-- Endereço (somente leitura) -->
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatCEP">CEP</label>
+            <input type="text" id="cadMatCEP" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatEstado">Estado (UF)</label>
+            <input type="text" id="cadMatEstado" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatCidade">Cidade</label>
+            <input type="text" id="cadMatCidade" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatBairro">Bairro</label>
+            <input type="text" id="cadMatBairro" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatRua">Rua</label>
+            <input type="text" id="cadMatRua" class="form-control form-control-sm" readonly />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small" for="cadMatNumeroCasa">Número</label>
+            <input type="text" id="cadMatNumeroCasa" class="form-control form-control-sm" readonly />
+          </div>
+
+          <hr class="my-3" />
+
+          <!-- Dados que o admin define -->
           <div class="mb-2">
             <label class="form-label small" for="cadMatRA">RA</label>
             <input type="text" id="cadMatRA" class="form-control form-control-sm" placeholder="RA do aluno" />
@@ -349,6 +404,7 @@
       </div>
     </div>
   </div>
+
 
   <!-- MODAL: troca de senha no primeiro acesso -->
   <div class="modal fade" id="modalTrocaSenha" tabindex="-1" aria-hidden="true">

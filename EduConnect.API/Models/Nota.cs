@@ -2,6 +2,13 @@
 
 namespace EduConnect.Api.Models;
 
+public enum TipoAvaliacao
+{
+    Atividade = 1,
+    P1 = 2,
+    P2 = 3
+}
+
 public class Nota
 {
     public int Id { get; set; }
@@ -14,6 +21,9 @@ public class Nota
 
     [Required]
     public int DisciplinaId { get; set; }
+
+    [Required]
+    public TipoAvaliacao Tipo { get; set; }
 
     [Required]
     [Range(0, 10, ErrorMessage = "A nota deve estar entre 0 e 10.")]

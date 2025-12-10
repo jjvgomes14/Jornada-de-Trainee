@@ -222,10 +222,10 @@
     const btnAddEvento = document.getElementById('btnAddEvento');
     if (btnAddEvento) btnAddEvento.classList.toggle('d-none', !(isProfessor || isAdmin));
 
-    // Filtro turma em gráficos (apenas admin)
+    // Filtro turma em gráficos (admin e professor)
     const wrapFiltroTurmaGraficos = document.getElementById('wrapFiltroTurmaGraficos');
     if (wrapFiltroTurmaGraficos) {
-      wrapFiltroTurmaGraficos.classList.toggle('d-none', !isAdmin);
+      wrapFiltroTurmaGraficos.classList.toggle('d-none', !(isAdmin || isProfessor));
     }
   }
 
@@ -258,7 +258,7 @@
     items.push({
       idSecao: 'sec-listagem',
       titulo: 'Alunos e Professores',
-      desc: 'Consulte os cadastros da escola.',
+      desc: 'Consulte os alunos e professores da escola.',
       icon: '👥'
     });
 
@@ -266,7 +266,7 @@
       items.push({
         idSecao: 'sec-cadastro',
         titulo: 'Cadastro',
-        desc: 'Cadastre novos alunos ou professores e aprove solicitações de matrícula.',
+        desc: 'Cadastre novos professores e aprove solicitações de matrícula.',
         icon: '📝'
       });
     }
@@ -274,7 +274,7 @@
     items.push({
       idSecao: 'sec-graficos',
       titulo: 'Gráficos de desempenho',
-      desc: 'Visualize as médias por disciplina ou turma.',
+      desc: 'Visualize as médias das turmas por disciplinas',
       icon: '📊'
     });
 
@@ -500,12 +500,29 @@
       selTurmaNotas.innerHTML = opts2;
     }
 
-    // Filtro de turma para gráficos (admin)
+    // Filtro de turma para gráficos (admin/professor)
     const selTurmaGraficos = document.getElementById('selTurmaGraficos');
     if (selTurmaGraficos) {
       const atual3 = selTurmaGraficos.value || '__todas__';
       let opts3 = '<option value="__todas__">Todas</option>';
-      state.turmas.forEach(t => opts3 += `<option${t === atual3 ? ' selected' : ''}>${t}</option>`);
+
+      // Para o professor, usamos apenas as turmas em que ele realmente lançou notas.
+      // Para o administrador, usamos todas as turmas cadastradas.
+      let turmasGrafico = state.turmas || [];
+
+      if (isProfessor && state.notasProfessor && state.notasProfessor.length) {
+        const setTurmasProf = new Set(
+          state.notasProfessor
+            .map(n => n.turma)
+            .filter(t => t && t !== '')
+        );
+        turmasGrafico = Array.from(setTurmasProf).sort();
+      }
+
+      turmasGrafico.forEach(t => {
+        opts3 += `<option${t === atual3 ? ' selected' : ''}>${t}</option>`;
+      });
+
       selTurmaGraficos.innerHTML = opts3;
     }
   }
@@ -625,6 +642,7 @@
   if (buscaNome) buscaNome.addEventListener('input', atualizarListagem);
   if (selTurma) selTurma.addEventListener('change', atualizarListagem);
   if (selDisciplina) selDisciplina.addEventListener('change', atualizarListagem);
+  
 
   // ========= Handlers da listagem (detalhes/editar/excluir) =========
   const modalDetalhesTitulo = document.getElementById('modalDetalhesTitulo');
@@ -653,7 +671,9 @@
     if (tipo === 'professor') obj = state.professores.find(p => p.id === id);
     if (!obj) return;
 
-    modalDetalhesTitulo.textContent = tipo === 'aluno' ? 'Detalhes do aluno' : 'Detalhes do professor';
+    modalDetalhesTitulo.textContent = tipo === 'aluno'
+      ? 'Detalhes do aluno'
+      : 'Detalhes do professor';
 
     let html = `<strong>Nome:</strong> ${obj.nome}<br>`;
     html += `<strong>E-mail:</strong> ${obj.email || '—'}<br>`;
@@ -661,6 +681,25 @@
     if (tipo === 'aluno') {
       html += `<strong>RA:</strong> ${obj.ra || '—'}<br>`;
       html += `<strong>Turma:</strong> ${obj.turma || '—'}<br>`;
+
+      // Se for admin, mostra todos os dados complementares
+      if (isAdmin) {
+        html += `<hr>`;
+        if (obj.dataNascimento) {
+          const dt = new Date(obj.dataNascimento);
+          html += `<strong>Data de nascimento:</strong> ${dt.toLocaleDateString()}<br>`;
+        }
+
+        html += `<strong>RG:</strong> ${obj.rg || '—'}<br>`;
+        html += `<strong>CPF:</strong> ${obj.cpf || '—'}<br>`;
+        html += `<strong>Celular:</strong> ${obj.celular || '—'}<br>`;
+        html += `<strong>CEP:</strong> ${obj.cep || '—'}<br>`;
+        html += `<strong>Estado (UF):</strong> ${obj.estado || '—'}<br>`;
+        html += `<strong>Cidade:</strong> ${obj.cidade || '—'}<br>`;
+        html += `<strong>Bairro:</strong> ${obj.bairro || '—'}<br>`;
+        html += `<strong>Rua:</strong> ${obj.rua || '—'}<br>`;
+        html += `<strong>Número:</strong> ${obj.numeroCasa || '—'}<br>`;
+      }
     } else {
       html += `<strong>Disciplina:</strong> ${obj.disciplina || '—'}<br>`;
     }
@@ -668,6 +707,7 @@
     modalDetalhesConteudo.innerHTML = html;
     modalDetalhes.show();
   }
+
 
   function abrirEdicao(tipo, id) {
     if (!modalEditarPessoa || !modalEditarPessoaTitulo) return;
@@ -878,86 +918,146 @@
   anexarHandlersListagem(tbodyAlunos, 'aluno');
   anexarHandlersListagem(tbodyProfessores, 'professor');
 
-  // ================== NOTAS (PROFESSOR) ==================
-  const selTurmaNotas = document.getElementById('selTurmaNotas');
-  const tbodyNotas = document.getElementById('tbodyNotas');
+    // ================== NOTAS (PROFESSOR) ==================
+    const selTurmaNotas = document.getElementById('selTurmaNotas');
+    const tbodyNotas = document.getElementById('tbodyNotas');
 
-  function atualizarNotas() {
-    if (!tbodyNotas) return;
-    const turma = selTurmaNotas ? (selTurmaNotas.value || '__selecione__') : '__selecione__';
-    tbodyNotas.innerHTML = '';
+    function atualizarNotas() {
+      if (!tbodyNotas) return;
+      const turma = selTurmaNotas ? (selTurmaNotas.value || '__selecione__') : '__selecione__';
+      tbodyNotas.innerHTML = '';
 
-    if (!isProfessor) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
-        Somente professores podem lançar notas.
-      </td>`;
-      tbodyNotas.appendChild(tr);
-      return;
-    }
+      if (!isProfessor) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+          Somente professores podem lançar notas.
+        </td>`;
+        tbodyNotas.appendChild(tr);
+        return;
+      }
 
-    if (turma === '__selecione__') {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
-        Selecione uma turma para lançar notas.
-      </td>`;
-      tbodyNotas.appendChild(tr);
-      return;
-    }
+      if (turma === '__selecione__') {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+          Selecione uma turma para lançar notas.
+        </td>`;
+        tbodyNotas.appendChild(tr);
+        return;
+      }
 
-    const alunosTurma = state.alunos.filter(a => a.turma === turma);
-    if (!alunosTurma.length) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-center text-body-secondary">
-        Nenhum aluno encontrado nesta turma.
-      </td>`;
-      tbodyNotas.appendChild(tr);
-      return;
-    }
+      const alunosTurma = state.alunos.filter(a => a.turma === turma);
+      if (!alunosTurma.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-center text-body-secondary">
+          Nenhum aluno encontrado nesta turma.
+        </td>`;
+        tbodyNotas.appendChild(tr);
+        return;
+      }
 
-    alunosTurma.forEach(a => {
-      const notasAluno = state.notasProfessor.filter(n => n.alunoId === a.id);
-      const chips = notasAluno.map(n => `
-        <span class="badge text-bg-secondary me-1 mb-1">
-          ${Number(n.valor).toFixed(1)}
-          <button type="button"
-                  class="btn btn-sm btn-link text-white p-0 ms-1"
-                  data-acao="rem-nota"
-                  data-id="${n.id}">
-            ×
-          </button>
-        </span>`).join('') || '<span class="text-body-secondary">— sem notas —</span>';
+      const tipos = ['Atividade', 'P1', 'P2'];
 
-      const mediaAluno = media(notasAluno.map(n => Number(n.valor)));
+      alunosTurma.forEach(a => {
+        const notasAluno = state.notasProfessor.filter(n => n.alunoId === a.id);
 
-      const tr = document.createElement('tr');
+        const pegarNota = (tipo) =>
+          notasAluno.find(n => (n.tipo || '').toUpperCase() === tipo.toUpperCase()) || null;
+
+        const notaAtiv = pegarNota('Atividade');
+        const notaP1 = pegarNota('P1');
+        const notaP2 = pegarNota('P2');
+
+        const valoresMedia = [notaAtiv, notaP1, notaP2]
+          .filter(n => n != null)
+          .map(n => Number(n.valor));
+
+        const mediaAluno = media(valoresMedia);
+
+        const montarInputNota = (tipo, nota) => `
+          <div class="input-group input-group-sm" style="max-width: 210px;">
+            <span class="input-group-text">${tipo}</span>
+            <input type="number" class="form-control form-control-sm"
+                  min="0" max="10" step="0.1"
+                  placeholder="0 a 10"
+                  value="${nota ? Number(nota.valor).toFixed(1) : ''}"
+                  data-acao="nota-input"
+                  data-aluno-id="${a.id}"
+                  data-tipo="${tipo}">
+            <button class="btn btn-outline-primary btn-sm"
+                    type="button"
+                    data-acao="salvar-nota"
+                    data-aluno-id="${a.id}"
+                    data-tipo="${tipo}">
+              Salvar
+            </button>
+          </div>
+        `;
+
+        const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${a.nome}</td>
-
-          <td>
-            ${chips}
-          </td>
-
-          <td>
-            <div class="input-group input-group-sm" style="max-width:180px;">
-              <input type="number" class="form-control form-control-sm"
-                    min="0" max="10" step="0.1"
-                    placeholder="Ex.: 7.5"
-                    data-acao="nova-nota-input"
-                    data-aluno-id="${a.id}">
-              <button class="btn btn-primary btn-add-nota"
-                      data-acao="add-nota"
-                      data-aluno-id="${a.id}">Adicionar</button>
-            </div>
-          </td>
-
+          <td>${montarInputNota('Atividade', notaAtiv)}</td>
+          <td>${montarInputNota('P1', notaP1)}</td>
+          <td>${montarInputNota('P2', notaP2)}</td>
           <td class="text-center">
             ${mediaAluno == null ? '—' : mediaAluno.toFixed(2)}
           </td>
         `;
         tbodyNotas.appendChild(tr);
-    });
-  }
+      });
+    }
+
+    if (selTurmaNotas) {
+      selTurmaNotas.addEventListener('change', atualizarNotas);
+    }
+
+    if (tbodyNotas) {
+      tbodyNotas.addEventListener('click', async e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const acao = btn.getAttribute('data-acao');
+
+        if (acao === 'salvar-nota') {
+          if (!isProfessor) return;
+
+          const alunoId = parseInt(btn.getAttribute('data-aluno-id') || '0', 10);
+          const tipo = btn.getAttribute('data-tipo') || '';
+          if (!alunoId || !tipo) return;
+
+          const inp = tbodyNotas.querySelector(
+            `input[data-aluno-id="${alunoId}"][data-tipo="${tipo}"]`
+          );
+          if (!inp) return;
+
+          const valorStr = (inp.value || '').replace(',', '.');
+          const valor = parseFloat(valorStr);
+
+          if (Number.isNaN(valor) || valor < 0 || valor > 10) {
+            alert('Informe uma nota entre 0 e 10.');
+            return;
+          }
+
+          try {
+            const body = JSON.stringify({ alunoId, tipo, valor });
+            const notaSalva = await api('/Notas', { method: 'POST', body });
+
+            // Atualiza state: garante no máximo 1 nota por (aluno, tipo)
+            state.notasProfessor = state.notasProfessor.filter(n =>
+              !(n.alunoId === notaSalva.alunoId &&
+                (n.tipo || '').toUpperCase() === (notaSalva.tipo || '').toUpperCase())
+            );
+            state.notasProfessor.push(notaSalva);
+
+            atualizarNotas();
+            atualizarGraficos();
+          } catch (err) {
+            console.error(err);
+            alert(err.message || 'Erro ao salvar nota.');
+          }
+        }
+      });
+    }
+
 
   if (selTurmaNotas) {
     selTurmaNotas.addEventListener('change', atualizarNotas);
@@ -1019,103 +1119,325 @@
   const subtituloGraficos = document.getElementById('subtituloGraficos');
   const selTurmaGraficos = document.getElementById('selTurmaGraficos');
 
-  async function atualizarGraficos() {
-    if (!chartCanvas) return;
+    async function atualizarGraficos() {
+      if (!chartCanvas) return;
 
-    // Destroi o gráfico anterior (se existir)
-    if (state.chartNotas) {
-      state.chartNotas.destroy();
-      state.chartNotas = null;
-    }
-    setMsg(grafMsg, '');
-
-    try {
-      let labels = [];
-      let valores = [];
-      let titulo = 'Gráficos de desempenho';
-      let subtitulo = '';
-
-      if (isAluno) {
-        titulo = 'Médias por disciplina (suas notas)';
-        const aluno = await api('/Alunos/me');
-        if (!aluno || !aluno.id) {
-          setMsg(grafMsg, 'Não foi possível identificar o aluno logado para o gráfico.', 'erro');
-          return;
-        }
-        const dados = await api(`/Notas/grafico-aluno/${aluno.id}`) || [];
-        if (!dados.length) {
-          setMsg(grafMsg, 'Ainda não há notas lançadas para você.', 'erro');
-          return;
-        }
-        labels = dados.map(d => d.disciplina || '—');
-        valores = dados.map(d => Number(d.media || d.valor || 0));
-      } else if (isProfessor) {
-        titulo = 'Médias por turma (suas turmas)';
-        const dados = await api('/Notas/grafico-professor') || [];
-        if (!dados.length) {
-          setMsg(grafMsg, 'Ainda não há notas lançadas para suas turmas.', 'erro');
-          return;
-        }
-        labels = dados.map(d => d.turma || '—');
-        valores = dados.map(d => Number(d.media || d.valor || 0));
-      } else if (isAdmin) {
-        titulo = 'Médias por disciplina (turma selecionada)';
-        const turma = selTurmaGraficos ? (selTurmaGraficos.value || '__todas__') : '__todas__';
-        if (!state.turmas.length) {
-          setMsg(grafMsg, 'Nenhuma turma cadastrada para gerar gráficos.', 'erro');
-          return;
-        }
-        if (turma === '__todas__') {
-          setMsg(grafMsg, 'Selecione uma turma para ver as médias por disciplina.', 'erro');
-          return;
-        }
-        subtitulo = `Turma: ${turma}`;
-        const dados = await api(`/Notas/grafico-admin?turma=${encodeURIComponent(turma)}`) || [];
-        if (!dados.length) {
-          setMsg(grafMsg, 'Ainda não há notas lançadas para esta turma.', 'erro');
-          return;
-        }
-        labels = dados.map(d => d.disciplina || '—');
-        valores = dados.map(d => Number(d.media || d.valor || 0));
+      // Destroi o gráfico anterior (se existir)
+      if (state.chartNotas) {
+        state.chartNotas.destroy();
+        state.chartNotas = null;
       }
+      setMsg(grafMsg, '');
 
-      if (tituloGraficos) tituloGraficos.textContent = titulo;
-      if (subtituloGraficos) subtituloGraficos.textContent = subtitulo;
+      try {
+        let titulo = '';
+        let subtitulo = '';
+        let chartConfig = null;
 
-      // 🔧 garante que o canvas resete antes de criar o gráfico
-      chartCanvas.height = chartCanvas.height;
+        const turmaSelecionada = selTurmaGraficos
+          ? (selTurmaGraficos.value || '__todas__')
+          : '__todas__';
 
-      const ctx = chartCanvas.getContext('2d');
-      state.chartNotas = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Média',
-            data: valores
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,   // deixa o Chart usar 100% da altura do container
-          scales: {
-            y: {
-              beginAtZero: true,
-              suggestedMax: 10
+        // ========== VISÃO DO ALUNO ==========
+        if (isAluno) {
+          titulo = 'Seu desempenho';
+          subtitulo = '';
+
+          const aluno = await api('/Alunos/me');
+          if (!aluno || !aluno.id) {
+            setMsg(grafMsg, 'Não foi possível identificar o aluno logado para o gráfico.', 'erro');
+            return;
+          }
+
+          const dados = await api(`/Notas/grafico-aluno/${aluno.id}`) || [];
+          if (!dados.length) {
+            setMsg(grafMsg, 'Ainda não há notas lançadas para você.', 'erro');
+            return;
+          }
+
+          const labels = dados.map(d => d.disciplina || '—');
+          const valores = dados.map(d => Number(d.media || d.valor || 0));
+
+          chartConfig = {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: 'Média',
+                  data: valores
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  suggestedMax: 10
+                }
+              }
             }
+          };
+        }
+
+        // ========== VISÃO DO PROFESSOR ==========
+        else if (isProfessor) {
+          const prof = await api('/Professores/me');
+          const disciplinaProf = prof?.disciplina || '';
+          // Quando nenhuma turma é selecionada → visão geral por turma
+          if (turmaSelecionada === '__todas__') {
+            titulo = `Média por Turma (${disciplinaProf})`;
+            subtitulo = '';
+
+            const dados = await api('/Notas/grafico-professor') || [];
+            if (!dados.length) {
+              setMsg(grafMsg, 'Ainda não há notas lançadas para suas turmas.', 'erro');
+              return;
+            }
+
+            const labels = dados.map(d => d.turma || '—');
+            const valores = dados.map(d => Number(d.media || d.valor || 0));
+
+            chartConfig = {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [
+                  {
+                    label: 'Média da turma',
+                    data: valores
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    suggestedMax: 10
+                  }
+                }
+              }
+            };
+          }
+          // Quando há turma selecionada → visão por aluno
+          else {
+            titulo = `Média por Turma (${disciplinaProf})`;
+            subtitulo = ``;
+
+            const notasTurma = (state.notasProfessor || []).filter(n => n.turma === turmaSelecionada);
+
+            if (!notasTurma.length) {
+              setMsg(grafMsg, 'Ainda não há notas lançadas para esta turma.', 'erro');
+              return;
+            }
+
+            // Média por aluno dentro da turma
+            const mapaAlunos = new Map(); // alunoId -> { nome, soma, count }
+            notasTurma.forEach(n => {
+              const alunoId = n.alunoId;
+              const aluno = state.alunos.find(a => a.id === alunoId);
+              const nome = aluno ? aluno.nome : `Aluno ${alunoId}`;
+
+              let info = mapaAlunos.get(alunoId);
+              if (!info) {
+                info = { nome, soma: 0, count: 0 };
+                mapaAlunos.set(alunoId, info);
+              }
+
+              info.soma += Number(n.valor || 0);
+              info.count += 1;
+            });
+
+            const labels = [];
+            const valores = [];
+            mapaAlunos.forEach(info => {
+              labels.push(info.nome);
+              valores.push(info.count ? info.soma / info.count : 0);
+            });
+
+            chartConfig = {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [
+                  {
+                    label: 'Média do aluno',
+                    data: valores
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    suggestedMax: 10
+                  }
+                }
+              }
+            };
           }
         }
-      });
-    } catch (err) {
-      console.error(err);
-      setMsg(grafMsg, err.message || 'Erro ao carregar gráficos.', 'erro');
+
+        // ========== VISÃO DO ADMINISTRADOR ==========
+        else if (isAdmin) {
+          const turmas = state.turmas || [];
+
+          if (!turmas.length) {
+            setMsg(grafMsg, 'Nenhuma turma cadastrada para gerar gráficos.', 'erro');
+            return;
+          }
+
+          // Sem filtro → compara as turmas por disciplina
+          if (turmaSelecionada === '__todas__') {
+            titulo = 'Médias das turmas por disciplina';
+            subtitulo = '';
+
+            // Para cada turma, busca as médias por disciplina e monta datasets
+            const promessas = turmas.map(t =>
+              api(`/Notas/grafico-admin?turma=${encodeURIComponent(t)}`)
+            );
+
+            const respostas = await Promise.all(promessas);
+
+            const setDisciplinas = new Set();
+            respostas.forEach(lista => {
+              (lista || []).forEach(d => {
+                setDisciplinas.add(d.disciplina || '—');
+              });
+            });
+
+            const labels = Array.from(setDisciplinas);
+            if (!labels.length) {
+              setMsg(grafMsg, 'Ainda não há notas lançadas para gerar gráficos.', 'erro');
+              return;
+            }
+
+            const datasets = turmas.map((turma, idx) => {
+              const lista = respostas[idx] || [];
+              const mapa = new Map(
+                lista.map(d => [d.disciplina || '—', Number(d.media || d.valor || 0)])
+              );
+
+              const data = labels.map(disc => mapa.get(disc) ?? 0);
+              return {
+                label: turma,
+                data
+              };
+            });
+
+            chartConfig = {
+              type: 'bar',
+              data: {
+                labels,
+                datasets
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    suggestedMax: 10
+                  }
+                }
+              }
+            };
+          }
+          // Com filtro → compara os alunos da turma por disciplina
+          else {
+            titulo = `Médias das turmas por disciplina`;
+            subtitulo = ``;
+
+            const alunosTurma = state.alunos.filter(a => a.turma === turmaSelecionada);
+            if (!alunosTurma.length) {
+              setMsg(grafMsg, 'Nenhum aluno encontrado nesta turma.', 'erro');
+              return;
+            }
+
+            const promessasAlunos = alunosTurma.map(a =>
+              api(`/Notas/grafico-aluno/${a.id}`)
+            );
+            const respostasAlunos = await Promise.all(promessasAlunos);
+
+            const setDisciplinas = new Set();
+            respostasAlunos.forEach(lista => {
+              (lista || []).forEach(d => {
+                setDisciplinas.add(d.disciplina || '—');
+              });
+            });
+
+            const labels = Array.from(setDisciplinas);
+            if (!labels.length) {
+              setMsg(grafMsg, 'Ainda não há notas lançadas para esta turma.', 'erro');
+              return;
+            }
+
+            const datasets = alunosTurma.map((aluno, idx) => {
+              const lista = respostasAlunos[idx] || [];
+              const mapa = new Map(
+                lista.map(d => [d.disciplina || '—', Number(d.media || d.valor || 0)])
+              );
+              const data = labels.map(disc => mapa.get(disc) ?? 0);
+
+              return {
+                label: aluno.nome,
+                data
+              };
+            });
+
+            chartConfig = {
+              type: 'bar',
+              data: {
+                labels,
+                datasets
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    suggestedMax: 10
+                  }
+                }
+              }
+            };
+          }
+        }
+        else {
+          // Papel desconhecido
+          setMsg(grafMsg, 'Perfil de usuário sem gráfico configurado.', 'erro');
+          return;
+        }
+
+        if (!chartConfig) return;
+
+        if (tituloGraficos) tituloGraficos.textContent = titulo;
+        if (subtituloGraficos) subtituloGraficos.textContent = subtitulo;
+
+        // Garante que o canvas seja redesenhado
+        chartCanvas.height = chartCanvas.height;
+
+        const ctx = chartCanvas.getContext('2d');
+        state.chartNotas = new Chart(ctx, chartConfig);
+      } catch (err) {
+        console.error(err);
+        setMsg(grafMsg, err.message || 'Erro ao carregar gráficos.', 'erro');
+      }
     }
-  }
 
 
-  if (selTurmaGraficos && isAdmin) {
+
+  if (selTurmaGraficos && (isAdmin || isProfessor)) {
     selTurmaGraficos.addEventListener('change', atualizarGraficos);
   }
+
 
   // ================== CALENDÁRIO ==================
   const calendarioEl = document.getElementById('calendario');
@@ -1242,10 +1564,23 @@
   const cadMatNome = document.getElementById('cadMatNome');
   const cadMatEmail = document.getElementById('cadMatEmail');
   const cadMatDataNasc = document.getElementById('cadMatDataNasc');
+
+  const cadMatRG = document.getElementById('cadMatRG');
+  const cadMatCPF = document.getElementById('cadMatCPF');
+  const cadMatCelular = document.getElementById('cadMatCelular');
+  const cadMatCEP = document.getElementById('cadMatCEP');
+  const cadMatEstado = document.getElementById('cadMatEstado');
+  const cadMatCidade = document.getElementById('cadMatCidade');
+  const cadMatBairro = document.getElementById('cadMatBairro');
+  const cadMatRua = document.getElementById('cadMatRua');
+  const cadMatNumeroCasa = document.getElementById('cadMatNumeroCasa');
+
   const cadMatRA = document.getElementById('cadMatRA');
   const cadMatTurma = document.getElementById('cadMatTurma');
   const fbCadastroMatricula = document.getElementById('fbCadastroMatricula');
   const btnSalvarCadastroMatricula = document.getElementById('btnSalvarCadastroMatricula');
+
+
 
   function atualizarMatriculasPendentes() {
     if (!tbodyMatriculasPend) return;
@@ -1297,12 +1632,26 @@
         if (!m || !modalCadAlunoMat) return;
 
         state.matriculaCadastroAtual = { idSolicitacao: id };
+
         if (cadMatId) cadMatId.value = String(id);
         if (cadMatNome) cadMatNome.value = m.nome || '';
         if (cadMatEmail) cadMatEmail.value = m.email || '';
         if (cadMatDataNasc) cadMatDataNasc.value = m.dataNascimento ? m.dataNascimento.substring(0, 10) : '';
+
+        // Esses campos dependem de você já ter incluído RG/CPF/endereço no retorno de /Matriculas/pendentes
+        if (cadMatRG) cadMatRG.value = m.rg || '';
+        if (cadMatCPF) cadMatCPF.value = m.cpf || '';
+        if (cadMatCelular) cadMatCelular.value = m.celular || '';
+        if (cadMatCEP) cadMatCEP.value = m.cep || '';
+        if (cadMatEstado) cadMatEstado.value = m.estado || '';
+        if (cadMatCidade) cadMatCidade.value = m.cidade || '';
+        if (cadMatBairro) cadMatBairro.value = m.bairro || '';
+        if (cadMatRua) cadMatRua.value = m.rua || '';
+        if (cadMatNumeroCasa) cadMatNumeroCasa.value = m.numeroCasa || '';
+
         if (cadMatRA) cadMatRA.value = '';
         if (cadMatTurma) cadMatTurma.value = '';
+
         setMsg(fbCadastroMatricula, '');
         modalCadAlunoMat.show();
       }
@@ -1320,43 +1669,33 @@
       return;
     }
 
-    const m = state.matriculasPendentes.find(x => x.id === idSolic);
-    if (!m) {
-      setMsg(fbCadastroMatricula, 'Solicitação não encontrada.', 'erro');
-      return;
-    }
-
     try {
-      // 1) Cria o aluno
-      const novoAluno = await api('/Alunos', {
-        method: 'POST',
-        body: JSON.stringify({
-          nome: m.nome,
-          email: m.email,
-          dataNascimento: m.dataNascimento,
-          ra,
-          turma
-        })
-      });
-      state.alunos.push(novoAluno);
-
-      // 2) Marca a matrícula como aprovada
+      // 1) Aprova a matrícula e, no back-end, cria o Aluno com todos os dados copiados
       await api('/Matriculas/responder', {
         method: 'POST',
         body: JSON.stringify({
           id: idSolic,
           aprovar: true,
+          ra,
+          turma,
           observacao: null
         })
       });
 
-      // Remove da lista local
+      // 2) Atualiza lista de matrículas pendentes (remove a atual)
       state.matriculasPendentes = state.matriculasPendentes.filter(x => x.id !== idSolic);
       atualizarMatriculasPendentes();
+
+      // 3) Recarrega os alunos do servidor para incluir o novo aluno
+      const alunosApi = await api('/Alunos');
+      state.alunos = alunosApi || [];
       atualizarListagem();
       atualizarTurmasFiltros();
+
       setMsg(fbCadastroMatricula, 'Aluno cadastrado e matrícula aprovada.', 'ok');
-      setTimeout(() => modalCadAlunoMat && modalCadAlunoMat.hide(), 700);
+      setTimeout(() => {
+        if (modalCadAlunoMat) modalCadAlunoMat.hide();
+      }, 700);
     } catch (err) {
       console.error(err);
       setMsg(fbCadastroMatricula, err.message || 'Erro ao cadastrar aluno/aprovar matrícula.', 'erro');
