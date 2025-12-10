@@ -34,6 +34,13 @@
   };
 
   // Helpers
+  function addDaysToDateStr(dateStr, days) {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    // retorna só YYYY-MM-DD
+    return d.toISOString().slice(0, 10);
+  }
+
   async function api(path, options) {
     options = options || {};
     const headers = Object.assign(
@@ -1521,12 +1528,26 @@
       events: async function (info, success, failure) {
         try {
           const dados = await api('/Eventos') || [];
-          const eventos = dados.map(ev => ({
-            id: ev.id,
-            title: ev.titulo,
-            start: ev.dataInicio,
-            end: ev.dataFim || ev.dataInicio
-          }));
+
+          const eventos = dados.map(ev => {
+            // garante que vamos usar apenas a parte da data (YYYY-MM-DD)
+            const start = ev.dataInicio ? ev.dataInicio.slice(0, 10) : null;
+            let end = ev.dataFim ? ev.dataFim.slice(0, 10) : null;
+
+            // se tem dataFim, mandamos +1 dia pro FullCalendar
+            if (end) {
+              end = addDaysToDateStr(end, 1);
+            }
+
+            return {
+              id: ev.id,
+              title: ev.titulo,
+              start,
+              end,          // end exclusivo (+1 dia) → evento aparece em TODO o intervalo
+              allDay: true  // deixa explícito que é evento de dia inteiro
+            };
+          });
+
           success(eventos);
         } catch (err) {
           console.error(err);
@@ -1540,15 +1561,25 @@
       eventClick: function (info) {
         const ev = info.event;
         if (!ev) return;
+
+        // start sempre certo
+        const dataInicio = ev.startStr.slice(0, 10);
+
+        // end vem exclusivo (+1 dia) → voltamos 1 dia para mostrar no modal
+        let dataFim = '';
+        if (ev.end) {
+          const endDateStr = ev.end.toISOString().slice(0, 10);
+          dataFim = addDaysToDateStr(endDateStr, -1);
+        }
+
         abrirModalEvento({
           id: ev.id,
           titulo: ev.title,
-          dataInicio: ev.startStr.slice(0, 10),
-          dataFim: ev.endStr ? ev.endStr.slice(0, 10) : ''
+          dataInicio,
+          dataFim
         });
       }
     });
-
     state.calendar.render();
   }
 
