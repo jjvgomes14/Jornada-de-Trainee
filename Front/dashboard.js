@@ -71,6 +71,29 @@
     return data;
   }
 
+  async function apiBlob(path, options) {
+    options = options || {};
+    const headers = Object.assign({}, options.headers || {}, {
+      Authorization: 'Bearer ' + token
+    });
+
+    const resp = await fetch(API_BASE_URL + path, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body
+    });
+
+    if (!resp.ok) {
+      let data = null;
+      try { data = await resp.json(); } catch {}
+      const msg = (data && (data.message || data.error)) || 'Erro ao comunicar com o servidor.';
+      throw new Error(msg);
+    }
+
+    return await resp.blob();
+  }
+
+
   function setMsg(el, msg, tipo) {
     if (!el) return;
     el.textContent = msg || '';
@@ -88,6 +111,9 @@
   }
 
   // Elementos Básicos
+  const wrapBoletim = document.getElementById('wrapBoletim');
+  const btnGerarBoletim = document.getElementById('btnGerarBoletim');
+  const msgBoletim = document.getElementById('msgBoletim');
   const nomeUsuarioSpan = document.getElementById('nomeUsuario');
   const btnSair = document.getElementById('btnSair');
 
@@ -350,6 +376,9 @@
     }
     if (idSecao === 'sec-cadastro' && isAdmin) {
       atualizarMatriculasPendentes();
+    }
+    if (idSecao === 'sec-notificacoes') {
+      atualizarNotificacoes();
     }
   }
 
@@ -1127,6 +1156,7 @@
   const selTurmaGraficos = document.getElementById('selTurmaGraficos');
 
     async function atualizarGraficos() {
+      if (wrapNotasAluno) wrapNotasAluno.classList.add('d-none');
       if (!chartCanvas) return;
 
       // Destroi o gráfico anterior (se existir)
@@ -1187,6 +1217,57 @@
               }
             }
           };
+
+          function setMsgSimple(el, msg, tipo) {
+            if (!el) return;
+            el.textContent = msg || '';
+            el.className = 'small mt-2';
+            if (!msg) return;
+            if (tipo === 'erro') el.classList.add('text-danger');
+            if (tipo === 'ok') el.classList.add('text-success');
+          }
+
+          async function configurarBoletim(aluno) {
+            if (!wrapBoletim) return;
+
+            // só aluno vê
+            wrapBoletim.classList.toggle('d-none', !isAluno);
+            if (!isAluno) return;
+
+            if (!btnGerarBoletim) return;
+
+            btnGerarBoletim.onclick = async () => {
+              try {
+                setMsgSimple(msgBoletim, 'Gerando PDF...', null);
+
+                const blob = await apiBlob(`/Notas/boletim/${aluno.id}`);
+
+                const url = URL.createObjectURL(blob);
+
+                // abre em nova aba
+                window.open(url, '_blank');
+
+                // ou, se preferir forçar download:
+                // const a = document.createElement('a');
+                // a.href = url;
+                // a.download = `Boletim_${aluno.ra || aluno.RA || aluno.id}.pdf`;
+                // document.body.appendChild(a);
+                // a.click();
+                // a.remove();
+
+                setMsgSimple(msgBoletim, 'PDF gerado com sucesso.', 'ok');
+
+                // libera URL depois de um tempo
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+              } catch (e) {
+                console.error(e);
+                setMsgSimple(msgBoletim, e.message || 'Erro ao gerar boletim.', 'erro');
+              }
+            };
+          }
+
+          await carregarTabelaNotasAluno(aluno.id);
+          await configurarBoletim(aluno);
         }
 
         // ========== VISÃO DO PROFESSOR ==========
@@ -1444,6 +1525,64 @@
   if (selTurmaGraficos && (isAdmin || isProfessor)) {
     selTurmaGraficos.addEventListener('change', atualizarGraficos);
   }
+
+  // Lista de notas
+  const wrapNotasAluno = document.getElementById('wrapNotasAluno');
+  const tbodyNotasAluno = document.getElementById('tbodyNotasAluno');
+
+  function fmtNota(v, dec = 1) {
+    if (v === null || v === undefined) return '—';
+    const num = Number(v);
+    if (Number.isNaN(num)) return '—';
+    return num.toFixed(dec);
+  }
+
+  async function carregarTabelaNotasAluno(alunoId) {
+    if (!wrapNotasAluno || !tbodyNotasAluno) return;
+
+    // só aluno vê
+    wrapNotasAluno.classList.toggle('d-none', !isAluno);
+
+    if (!isAluno) return;
+
+    tbodyNotasAluno.innerHTML = `
+      <tr><td colspan="5" class="text-center text-body-secondary">Carregando...</td></tr>
+    `;
+
+    try {
+      const linhas = await api(`/Notas/aluno-detalhes/${alunoId}`) || [];
+
+      if (!linhas.length) {
+        tbodyNotasAluno.innerHTML = `
+          <tr><td colspan="5" class="text-center text-body-secondary">Ainda não há notas lançadas.</td></tr>
+        `;
+        return;
+      }
+
+      // opcional: ordenar por disciplina
+      linhas.sort((a, b) => String(a.disciplina || '').localeCompare(String(b.disciplina || ''), 'pt-BR'));
+
+      tbodyNotasAluno.innerHTML = '';
+      linhas.forEach(l => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${l.disciplina || '—'}</td>
+          <td class="text-center">${fmtNota(l.atividade, 1)}</td>
+          <td class="text-center">${fmtNota(l.p1, 1)}</td>
+          <td class="text-center">${fmtNota(l.p2, 1)}</td>
+          <td class="text-center">${fmtNota(l.media, 2)}</td>
+        `;
+        tbodyNotasAluno.appendChild(tr);
+      });
+
+    } catch (err) {
+      console.error(err);
+      tbodyNotasAluno.innerHTML = `
+        <tr><td colspan="5" class="text-center text-danger">Erro ao carregar notas.</td></tr>
+      `;
+    }
+  }
+
 
 
   // ================== CALENDÁRIO ==================
@@ -1735,6 +1874,54 @@
 
   if (btnSalvarCadastroMatricula) {
     btnSalvarCadastroMatricula.addEventListener('click', salvarCadastroAlunoMatricula);
+  }
+
+  // ===================== NOTIFICAÇÕES =======================
+  async function atualizarNotificacoes() {
+    const lista = document.getElementById('listaNotificacoes');
+    if (!lista) return;
+
+    if (!isAluno) {
+      lista.innerHTML = '<div class="text-body-secondary small">Disponível apenas para alunos.</div>';
+      return;
+    }
+
+    lista.innerHTML = '<div class="text-body-secondary small">Carregando...</div>';
+
+    try {
+      const itens = await api('/Notificacoes/eventos?limit=50');
+
+      if (!itens || itens.length === 0) {
+        lista.innerHTML = '<div class="text-body-secondary small">Nenhuma notificação ainda.</div>';
+        return;
+      }
+
+      lista.innerHTML = '';
+      itens.forEach(n => {
+        const dt = n.criadaEm ? new Date(n.criadaEm) : null;
+        const quando = dt ? dt.toLocaleString('pt-BR') : '';
+
+        const tipo = (n.tipo === 0) ? 'Criado' : (n.tipo === 1) ? 'Editado' : 'Excluído';
+
+        const card = document.createElement('div');
+        card.className = 'border rounded p-2 mb-2';
+
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="fw-semibold">${n.titulo || 'Notificação'}</div>
+              <div class="small text-body-secondary">${tipo}${quando ? ' • ' + quando : ''}</div>
+            </div>
+          </div>
+          <pre class="mb-0 mt-2 small" style="white-space: pre-wrap;">${(n.mensagem || '').trim()}</pre>
+        `;
+
+        lista.appendChild(card);
+      });
+    } catch (e) {
+      console.error(e);
+      lista.innerHTML = `<div class="text-danger small">${e.message || 'Erro ao carregar notificações.'}</div>`;
+    }
   }
 
   // ================== CARREGAMENTO INICIAL ==================

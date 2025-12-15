@@ -104,6 +104,13 @@ public class EventosController : ControllerBase
         _db.Eventos.Add(ev);
         await _db.SaveChangesAsync();
 
+        await CriarNotificacaoAsync(
+            TipoNotificacaoEvento.Criacao,
+            ev,
+            "Novo evento criado",
+            $"{(await ObterDadosProfessorAsync(ev.ProfessorId)).profNome} ({(await ObterDadosProfessorAsync(ev.ProfessorId)).profDisc}) criou um evento em {FmtData(ev.DataInicio)}: “{ev.Titulo}”."
+        );
+
         return CreatedAtAction(nameof(GetById), new { id = ev.Id }, ev);
     }
 
@@ -118,6 +125,10 @@ public class EventosController : ControllerBase
             return BadRequest(ModelState);
 
         var ev = await _db.Eventos.FindAsync(id);
+        var antigoTitulo = ev.Titulo;
+        var antigoInicio = ev.DataInicio;
+        var antigoFim = ev.DataFim;
+
         if (ev == null) return NotFound();
 
         if (!UsuarioPodeAlterarEvento(ev))
@@ -129,6 +140,31 @@ public class EventosController : ControllerBase
         // ProfessorId não é alterado aqui para manter o vínculo original
 
         await _db.SaveChangesAsync();
+
+        var alteracoes = new List<string>();
+
+        if (antigoTitulo != ev.Titulo)
+            alteracoes.Add($"Título: “{antigoTitulo}” → “{ev.Titulo}”");
+
+        if (antigoInicio.Date != ev.DataInicio.Date)
+            alteracoes.Add($"Data: {FmtData(antigoInicio)} → {FmtData(ev.DataInicio)}");
+
+        var fimAnt = antigoFim.HasValue ? FmtData(antigoFim.Value) : "—";
+        var fimNovo = ev.DataFim.HasValue ? FmtData(ev.DataFim.Value) : "—";
+        if (fimAnt != fimNovo)
+            alteracoes.Add($"Fim: {fimAnt} → {fimNovo}");
+
+        var msgAlt = alteracoes.Count == 0
+            ? "Nenhuma alteração relevante detectada."
+            : string.Join("\n", alteracoes);
+
+        await CriarNotificacaoAsync(
+            TipoNotificacaoEvento.Edicao,
+            ev,
+            "Evento editado",
+            $"Alterações no evento “{ev.Titulo}” ({FmtData(ev.DataInicio)}):\n{msgAlt}"
+        );
+
         return NoContent();
     }
 
@@ -140,6 +176,10 @@ public class EventosController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var ev = await _db.Eventos.FindAsync(id);
+        var tituloEvento = ev.Titulo;
+        var dataEvento = ev.DataInicio;
+        var professorId = ev.ProfessorId;
+
         if (ev == null) return NotFound();
 
         if (!UsuarioPodeAlterarEvento(ev))
@@ -147,6 +187,64 @@ public class EventosController : ControllerBase
 
         _db.Eventos.Remove(ev);
         await _db.SaveChangesAsync();
+
+        var (profNome, profDisc) = await ObterDadosProfessorAsync(professorId);
+
+        _db.NotificacoesEventos.Add(new NotificacaoEvento
+        {
+            Tipo = TipoNotificacaoEvento.Exclusao,
+            PublicoAlvo = "Aluno",
+            ProfessorNome = profNome,
+            ProfessorDisciplina = profDisc,
+            EventoId = id,
+            EventoTitulo = tituloEvento ?? "",
+            DataEvento = dataEvento,
+            Titulo = "Evento excluído",
+            Mensagem = $"{profNome} ({profDisc}) excluiu o evento “{tituloEvento}”.",
+            CriadaEm = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
         return NoContent();
     }
+
+    // GERAR NOTIFICAÇÕES
+    private static string FmtData(DateTime d) => d.ToString("dd/MM/yyyy");
+
+    private async Task<(string profNome, string profDisc)> ObterDadosProfessorAsync(int? professorId)
+    {
+        if (!professorId.HasValue)
+            return ("Administração", "—");
+
+        var prof = await _db.Professores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == professorId.Value);
+        if (prof == null) return ("Professor", "—");
+
+        return (prof.Nome, prof.Disciplina);
+    }
+
+    private async Task CriarNotificacaoAsync(
+        TipoNotificacaoEvento tipo,
+        EventoCalendario ev,
+        string titulo,
+        string mensagem)
+    {
+        var (profNome, profDisc) = await ObterDadosProfessorAsync(ev.ProfessorId);
+
+        _db.NotificacoesEventos.Add(new NotificacaoEvento
+        {
+            Tipo = tipo,
+            PublicoAlvo = "Aluno",
+            ProfessorNome = profNome,
+            ProfessorDisciplina = profDisc,
+            EventoId = ev.Id,
+            EventoTitulo = ev.Titulo ?? "",
+            DataEvento = ev.DataInicio,
+            Titulo = titulo,
+            Mensagem = mensagem,
+            CriadaEm = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+    }
+
 }

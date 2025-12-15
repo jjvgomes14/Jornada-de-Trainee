@@ -4,6 +4,11 @@ using EduConnect.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
 
 namespace EduConnect.Api.Controllers;
 
@@ -302,4 +307,209 @@ public class NotasController : ControllerBase
         var resultado = await query.AsNoTracking().ToListAsync();
         return Ok(resultado);
     }
+
+    // ==========================
+    // LISTA DE NOTAS – ALUNO (DETALHADO)
+    // Matéria, Atividade, P1, P2, Média
+    // ==========================
+
+    // GET: /api/Notas/aluno-detalhes/{alunoId}
+    [HttpGet("aluno-detalhes/{alunoId:int}")]
+    [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
+    public async Task<ActionResult<IEnumerable<object>>> AlunoDetalhes(int alunoId)
+    {
+        var existeAluno = await _db.Alunos.AnyAsync(a => a.Id == alunoId);
+        if (!existeAluno)
+            return NotFound(new { message = "Aluno não encontrado." });
+
+        var query =
+            from n in _db.Notas
+                .Include(x => x.Disciplina)
+            where n.AlunoId == alunoId
+            group n by n.Disciplina!.Nome into g
+            select new
+            {
+                disciplina = g.Key,
+
+                atividade = g.Where(x => x.Tipo == TipoAvaliacao.Atividade)
+                             .Select(x => (decimal?)x.Valor)
+                             .FirstOrDefault(),
+
+                p1 = g.Where(x => x.Tipo == TipoAvaliacao.P1)
+                      .Select(x => (decimal?)x.Valor)
+                      .FirstOrDefault(),
+
+                p2 = g.Where(x => x.Tipo == TipoAvaliacao.P2)
+                      .Select(x => (decimal?)x.Valor)
+                      .FirstOrDefault(),
+
+                media = (decimal?)g.Average(x => x.Valor)
+            };
+
+        var resultado = await query.AsNoTracking().ToListAsync();
+
+        // arredondar (opcional, mas fica mais bonito no front)
+        var formatado = resultado.Select(x => new
+        {
+            x.disciplina,
+            x.atividade,
+            x.p1,
+            x.p2,
+            media = x.media.HasValue ? Math.Round(x.media.Value, 2) : (decimal?)null
+        });
+
+        return Ok(formatado);
+    }
+
+    // ==========================
+    // BOLETIM (PDF) – ALUNO
+    // ==========================
+    // GET: /api/Notas/boletim/{alunoId}
+    [HttpGet("boletim/{alunoId:int}")]
+    [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
+    public async Task<IActionResult> GerarBoletim(int alunoId)
+    {
+        // Se for ALUNO, só pode gerar o próprio boletim
+        if (User.IsInRole(UserRoles.Aluno))
+        {
+            var username = User.FindFirstValue(ClaimTypes.Name);
+            if (string.IsNullOrWhiteSpace(username))
+                return Unauthorized(new { message = "Usuário não identificado no token." });
+
+            // mesmo critério do /Alunos/me (pra amarrar usuário->aluno)
+            static string GerarUsernameBasico(string nomeCompleto)
+            {
+                var partes = nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var primeiraLetra = char.ToLowerInvariant(partes[0][0]);
+                var ultimoSobrenome = partes.Length > 1 ? partes[^1].ToLowerInvariant() : partes[0].ToLowerInvariant();
+                return $"{primeiraLetra}{ultimoSobrenome}";
+            }
+
+            var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
+            var alunoLogado = alunos.FirstOrDefault(a =>
+                string.Equals(a.Email, username, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a.RA, username, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a.Nome, username, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(GerarUsernameBasico(a.Nome), username, StringComparison.OrdinalIgnoreCase) ||
+                username.StartsWith(GerarUsernameBasico(a.Nome), StringComparison.OrdinalIgnoreCase)
+            );
+
+            if (alunoLogado == null)
+                return Forbid();
+
+            if (alunoLogado.Id != alunoId)
+                return Forbid();
+        }
+
+        var aluno = await _db.Alunos.AsNoTracking().FirstOrDefaultAsync(a => a.Id == alunoId);
+        if (aluno == null)
+            return NotFound(new { message = "Aluno não encontrado." });
+
+        var medias =
+            await (from n in _db.Notas.Include(x => x.Disciplina)
+                   where n.AlunoId == alunoId
+                   group n by n.Disciplina!.Nome into g
+                   select new
+                   {
+                       Disciplina = g.Key,
+                       Media = g.Average(x => x.Valor)
+                   })
+            .AsNoTracking()
+            .ToListAsync();
+
+        // ordena e calcula status
+        var linhas = medias
+            .OrderBy(x => x.Disciplina)
+            .Select(x => new
+            {
+                x.Disciplina,
+                Media = Math.Round(x.Media, 2),
+                Status = x.Media >= 5.0m ? "Aprovado" : "Reprovado"
+            })
+            .ToList();
+
+        var dataEmissao = DateTime.Now;
+
+        // Gera PDF
+        var pdfBytes = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Margin(30);
+                page.Size(PageSizes.A4);
+                page.DefaultTextStyle(x => x.FontSize(12));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Text("Boletim Escolar - EduConnect").SemiBold().FontSize(18);
+                    col.Item().Text($"Emissão: {dataEmissao:dd/MM/yyyy HH:mm}");
+                    col.Item().LineHorizontal(1);
+                });
+
+                page.Content().Column(col =>
+                {
+                    col.Spacing(10);
+
+                    col.Item().Text($"Nome: {aluno.Nome}").FontSize(12);
+                    col.Item().Text($"RA: {aluno.RA}").FontSize(12);
+                    col.Item().Text($"Turma: {aluno.Turma}").FontSize(12);
+
+                    col.Item().LineHorizontal(1);
+
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(6); // Disciplina
+                            columns.RelativeColumn(2); // Média
+                            columns.RelativeColumn(3); // Status
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Element(CellHeader).Text("Matéria");
+                            header.Cell().Element(CellHeader).AlignCenter().Text("Média");
+                            header.Cell().Element(CellHeader).AlignCenter().Text("Situação");
+                        });
+
+                        if (linhas.Count == 0)
+                        {
+                            table.Cell().ColumnSpan(3).PaddingVertical(10)
+                                 .Text("Nenhuma nota lançada ainda.").Italic();
+                        }
+                        else
+                        {
+                            foreach (var l in linhas)
+                            {
+                                table.Cell().Element(CellBody).Text(l.Disciplina);
+                                table.Cell().Element(CellBody).AlignCenter().Text(l.Media.ToString("0.00"));
+                                table.Cell().Element(CellBody).AlignCenter().Text(l.Status);
+                            }
+                        }
+                    });
+
+                    col.Item().Text("Critério: aprovado com média >= 5,0.")
+                              .FontSize(10).FontColor(Colors.Grey.Darken2);
+                });
+
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("EduConnect • Página ");
+                    t.CurrentPageNumber();
+                    t.Span(" de ");
+                    t.TotalPages();
+                });
+
+                static IContainer CellHeader(IContainer c) =>
+                    c.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(6).PaddingHorizontal(6).Background(Colors.Grey.Lighten3);
+
+                static IContainer CellBody(IContainer c) =>
+                    c.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingVertical(6).PaddingHorizontal(6);
+            });
+        }).GeneratePdf();
+
+        var fileName = $"Boletim_{aluno.RA}_{dataEmissao:yyyyMMddHHmm}.pdf";
+        return File(pdfBytes, "application/pdf", fileName);
+    }
+
 }

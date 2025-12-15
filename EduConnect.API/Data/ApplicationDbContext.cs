@@ -18,6 +18,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Nota> Notas => Set<Nota>();
     public DbSet<EventoCalendario> Eventos => Set<EventoCalendario>();
     public DbSet<SolicitacaoMatricula> SolicitacoesMatricula => Set<SolicitacaoMatricula>();
+    public DbSet<NotificacaoEvento> NotificacoesEventos => Set<NotificacaoEvento>();
 
 
     // ========== CONFIGURAÇÃO DO MODELO ==========
