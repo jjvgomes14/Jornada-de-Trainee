@@ -204,21 +204,21 @@
       body: JSON.stringify({nome, email, dataNascimento, rg, cpf, celular, cep, estado, cidade, bairro, rua, numeroCasa})
     });
 
-      if (fbMatricula) {
-        fbMatricula.textContent =
-          'Solicitação enviada com sucesso! Você receberá um e-mail de confirmação.';
-        fbMatricula.className = 'small mt-1 text-success';
-      }
-
       formMatricula.reset();
 
-      setTimeout(() => {
-        const modalEl = document.getElementById('modalMatricula');
-        if (modalEl && window.bootstrap) {
-          const modal = bootstrap.Modal.getInstance(modalEl);
-          if (modal) modal.hide();
-        }
-      }, 1000);
+      // Fecha o modal de matrícula
+      const modalMatEl = document.getElementById('modalMatricula');
+      if (modalMatEl && window.bootstrap) {
+        const modalMat = bootstrap.Modal.getInstance(modalMatEl);
+        if (modalMat) modalMat.hide();
+      }
+
+      // Abre o modal de confirmação
+      const modalConfEl = document.getElementById('modalConfirmacaoMatricula');
+      if (modalConfEl && window.bootstrap) {
+        const modalConf = new bootstrap.Modal(modalConfEl);
+        modalConf.show();
+      }
     } catch (err) {
       console.error(err);
       if (fbMatricula) {

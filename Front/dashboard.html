@@ -18,7 +18,7 @@
   <!-- Barra de Navegação -->
   <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
     <div class="container-fluid">
-      <a class="navbar-brand fw-semibold" href="#">EduConnect</a>
+      <span class="navbar-brand brand-title m-0">EduConnect</span>
 
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent">
         <span class="navbar-toggler-icon"></span>
@@ -30,7 +30,7 @@
             <a class="nav-link active" data-section="sec-home" href="#">Home</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" data-section="sec-listagem" href="#">Listagem</a>
+            <a class="nav-link" data-section="sec-listagem" href="#">Consulta Acadêmica</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" data-section="sec-cadastro" href="#">Cadastro</a>
@@ -98,15 +98,21 @@
           <div id="grupoCadastroProfessor" class="vstack gap-2">
             <select class="form-select" id="cadDisc">
               <option value="">Selecione a disciplina</option>
-              <option>Matemática</option>
-              <option>Química</option>
-              <option>Física</option>
-              <option>Biologia</option>
-              <option>Geografia</option>
-              <option>História</option>
-              <option>Filosofia</option>
-              <option>Sociologia</option>
-              <option>Português</option>
+              <option>Cálculo I</option>
+              <option>Cálculo II</option>
+              <option>Álgebra Linear</option>
+              <option>Física I</option>
+              <option>Física II</option>
+              <option>Química Geral</option>
+              <option>Programação</option>
+              <option>Estruturas de Dados</option>
+              <option>Circuitos Elétricos</option>
+              <option>Eletrônica</option>
+              <option>Mecânica dos Sólidos</option>
+              <option>Termodinâmica</option>
+              <option>Resistência dos Materiais</option>
+              <option>Controle e Automação</option>
+              <option>Projeto Integrador</option>
             </select>
           </div>
 
@@ -139,7 +145,7 @@
     <section id="sec-listagem" class="sec d-none">
       <div class="card p-3 shadow-sm">
         <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-          <h5 class="m-0">Listagem</h5>
+          <h5 class="m-0">Consulta Acadêmica</h5>
 
           <div class="d-flex align-items-center gap-2 ms-3">
             <label class="small text-body-secondary mb-0">Nome:</label>
@@ -328,7 +334,7 @@
 
   <!-- MODAL: cadastro de aluno a partir de matrícula pendente -->
   <div class="modal fade" id="modalCadastroAlunoMatricula" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Cadastrar aluno</h5>
@@ -338,84 +344,115 @@
         <div class="modal-body">
           <input type="hidden" id="cadMatId" />
 
-          <!-- Dados pessoais (somente leitura) -->
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatNome">Nome</label>
-            <input type="text" id="cadMatNome" class="form-control form-control-sm" readonly />
+          <!-- Abas -->
+          <ul class="nav nav-tabs" id="tabsCadAluno" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-dados-tab" data-bs-toggle="tab" data-bs-target="#tab-dados" type="button" role="tab">
+                Dados
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-endereco-tab" data-bs-toggle="tab" data-bs-target="#tab-endereco" type="button" role="tab">
+                Endereço
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-matricula-tab" data-bs-toggle="tab" data-bs-target="#tab-matricula" type="button" role="tab">
+                Matrícula
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content pt-3">
+            <!-- Aba: Dados -->
+            <div class="tab-pane fade show active" id="tab-dados" role="tabpanel">
+              <div class="row g-2">
+                <div class="col-12">
+                  <label class="form-label small" for="cadMatNome">Nome</label>
+                  <input type="text" id="cadMatNome" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatEmail">E-mail</label>
+                  <input type="email" id="cadMatEmail" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatDataNasc">Data de nascimento</label>
+                  <input type="date" id="cadMatDataNasc" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatRG">RG</label>
+                  <input type="text" id="cadMatRG" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatCPF">CPF</label>
+                  <input type="text" id="cadMatCPF" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatCelular">Celular</label>
+                  <input type="text" id="cadMatCelular" class="form-control form-control-sm" readonly />
+                </div>
+              </div>
+            </div>
+
+            <!-- Aba: Endereço -->
+            <div class="tab-pane fade" id="tab-endereco" role="tabpanel">
+              <div class="row g-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label small" for="cadMatCEP">CEP</label>
+                  <input type="text" id="cadMatCEP" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-6 col-md-2">
+                  <label class="form-label small" for="cadMatEstado">UF</label>
+                  <input type="text" id="cadMatEstado" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-6 col-md-6">
+                  <label class="form-label small" for="cadMatCidade">Cidade</label>
+                  <input type="text" id="cadMatCidade" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatBairro">Bairro</label>
+                  <input type="text" id="cadMatBairro" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatRua">Rua</label>
+                  <input type="text" id="cadMatRua" class="form-control form-control-sm" readonly />
+                </div>
+
+                <div class="col-12 col-md-4">
+                  <label class="form-label small" for="cadMatNumeroCasa">Número</label>
+                  <input type="text" id="cadMatNumeroCasa" class="form-control form-control-sm" readonly />
+                </div>
+              </div>
+            </div>
+
+            <!-- Aba: Matrícula -->
+            <div class="tab-pane fade" id="tab-matricula" role="tabpanel">
+              <div class="row g-2">
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatRA">RA</label>
+                  <input type="text" id="cadMatRA" class="form-control form-control-sm" placeholder="RA do aluno" />
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label small" for="cadMatTurma">Turma</label>
+                  <input type="text" id="cadMatTurma" class="form-control form-control-sm" placeholder="Turma (ex.: 3ºB)" />
+                </div>
+
+                <div class="col-12">
+                  <div id="fbCadastroMatricula" class="small mt-1"></div>
+                </div>
+              </div>
+            </div>
           </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatEmail">E-mail</label>
-            <input type="email" id="cadMatEmail" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatDataNasc">Data de nascimento</label>
-            <input type="date" id="cadMatDataNasc" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatRG">RG</label>
-            <input type="text" id="cadMatRG" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatCPF">CPF</label>
-            <input type="text" id="cadMatCPF" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatCelular">Celular</label>
-            <input type="text" id="cadMatCelular" class="form-control form-control-sm" readonly />
-          </div>
-
-          <hr class="my-3" />
-
-          <!-- Endereço (somente leitura) -->
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatCEP">CEP</label>
-            <input type="text" id="cadMatCEP" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatEstado">Estado (UF)</label>
-            <input type="text" id="cadMatEstado" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatCidade">Cidade</label>
-            <input type="text" id="cadMatCidade" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatBairro">Bairro</label>
-            <input type="text" id="cadMatBairro" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatRua">Rua</label>
-            <input type="text" id="cadMatRua" class="form-control form-control-sm" readonly />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatNumeroCasa">Número</label>
-            <input type="text" id="cadMatNumeroCasa" class="form-control form-control-sm" readonly />
-          </div>
-
-          <hr class="my-3" />
-
-          <!-- Dados que o admin define -->
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatRA">RA</label>
-            <input type="text" id="cadMatRA" class="form-control form-control-sm" placeholder="RA do aluno" />
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small" for="cadMatTurma">Turma</label>
-            <input type="text" id="cadMatTurma" class="form-control form-control-sm" placeholder="Turma (ex.: 3ºB)" />
-          </div>
-
-          <div id="fbCadastroMatricula" class="small mt-1"></div>
         </div>
 
         <div class="modal-footer">
@@ -523,17 +560,23 @@
               <label class="form-label small" for="edicaoDisciplina">
                 Disciplina
               </label>
-              <select id="edicaoDisciplina" class="form-select form-select-sm">
+              <select class="form-select" id="cadDisc">
                 <option value="">Selecione a disciplina</option>
-                <option>Matemática</option>
-                <option>Química</option>
-                <option>Física</option>
-                <option>Biologia</option>
-                <option>Geografia</option>
-                <option>História</option>
-                <option>Filosofia</option>
-                <option>Sociologia</option>
-                <option>Português</option>
+                <option>Cálculo I</option>
+                <option>Cálculo II</option>
+                <option>Álgebra Linear</option>
+                <option>Física I</option>
+                <option>Física II</option>
+                <option>Química Geral</option>
+                <option>Programação</option>
+                <option>Estruturas de Dados</option>
+                <option>Circuitos Elétricos</option>
+                <option>Eletrônica</option>
+                <option>Mecânica dos Sólidos</option>
+                <option>Termodinâmica</option>
+                <option>Resistência dos Materiais</option>
+                <option>Controle e Automação</option>
+                <option>Projeto Integrador</option>
               </select>
             </div>
           </div>

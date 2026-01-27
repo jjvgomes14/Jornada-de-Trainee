@@ -2,6 +2,7 @@
 using EduConnect.Api.Data;
 using EduConnect.Api.Models;
 using EduConnect.Api.Services;
+using EduConnect.API.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -141,25 +142,21 @@ public class AlunosController : ControllerBase
     // PUT: /api/Alunos/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
-    public async Task<IActionResult> Update(int id, [FromBody] Aluno aluno)
+    public async Task<IActionResult> Update(int id, [FromBody] AlunoDto dto)
     {
-        if (id != aluno.Id)
+        if (id != dto.Id)
             return BadRequest(new { message = "Id do caminho e do corpo não conferem." });
 
-        _db.Entry(aluno).State = EntityState.Modified;
+        var aluno = await _db.Alunos.FindAsync(id);
+        if (aluno == null)
+            return NotFound();
 
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!await _db.Alunos.AnyAsync(a => a.Id == id))
-                return NotFound();
+        aluno.Nome = dto.Nome;
+        aluno.Email = dto.Email;
+        aluno.RA = dto.RA;
+        aluno.Turma = dto.Turma;
 
-            throw; // deixa a exception subir se for outro problema
-        }
-
+        await _db.SaveChangesAsync();
         return NoContent();
     }
 
