@@ -1,0 +1,24 @@
+# IGNORAR PASTAS DO BACKEND
+backend/bin/
+backend/obj/
+backend/.vs/
+backend/**/bin/
+backend/**/obj/
+
+# VS Code / Visual Studio
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Arquivos temporários
+*.log
+*.db
+*.pdb
+
+# Pastas de publicação
+publish/
+publicado/
+
+# Config de DEV opcional
+backend/appsettings.Development.json

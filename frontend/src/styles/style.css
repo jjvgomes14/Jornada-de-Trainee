@@ -1,0 +1,302 @@
+/* =========================================================
+   EduConnect - Tema Light/Dark (corrigido e legível)
+   - Fonte única: :root[data-theme="light"|"dark"]
+   - Bootstrap sincronizado via body[data-bs-theme]
+   ========================================================= */
+
+*{
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+/* ===========================
+   THEME TOKENS (fonte única)
+   =========================== */
+:root,
+:root[data-theme="light"]{
+  /* Superfícies */
+  --bg: #f6f8fc;
+  --card: #ffffff;
+  --border: rgba(15, 23, 42, 0.12);
+
+  /* Texto */
+  --text: #0f172a;
+  --text-2: #334155;
+  --muted: #64748b;
+
+  /* Ação */
+  --primary: #1f3a5f;
+  --primary-2: #162a44;
+  --accent: #198754;
+
+  /* Inputs */
+  --input-bg: #ffffff;
+  --input-text: #0f172a;
+  --placeholder: #94a3b8;
+  --focus: rgba(31, 58, 95, .22);
+
+  /* Radius */
+  --radius: 10px;
+
+  /* Compat institucional */
+  --inst-primary: var(--primary);
+  --inst-primary-2: var(--primary-2);
+  --inst-accent: var(--accent);
+  --inst-bg: var(--bg);
+  --inst-card: var(--card);
+  --inst-border: var(--border);
+  --inst-text: var(--text);
+  --inst-muted: var(--muted);
+  --inst-radius: var(--radius);
+}
+
+:root[data-theme="dark"]{
+  /* Superfícies (um pouco mais claras pra contraste) */
+  --bg: #0a1020;
+  --card: #0f172a;
+  --border: rgba(226, 232, 240, 0.18);
+
+  /* Texto (mais claro pra leitura) */
+  --text: #f8fafc;
+  --text-2: #e2e8f0;
+  --muted: #cbd5e1;
+
+  /* Ação */
+  --primary: #4c8dff;
+  --primary-2: #377cff;
+  --accent: #22c55e;
+
+  /* Inputs */
+  --input-bg: rgba(15, 23, 42, 0.65);
+  --input-text: #f8fafc;
+  --placeholder: #b6c2d3;
+  --focus: rgba(76, 141, 255, .28);
+
+  /* Compat institucional */
+  --inst-primary: var(--text);        /* título sempre legível no dark */
+  --inst-primary-2: var(--text-2);
+  --inst-accent: var(--accent);
+  --inst-bg: var(--bg);
+  --inst-card: var(--card);
+  --inst-border: var(--border);
+  --inst-text: var(--text);
+  --inst-muted: var(--muted);
+  --inst-radius: var(--radius);
+}
+
+/* ===========================
+   Base global
+   =========================== */
+body{
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Força tipografia do app (corrige “texto apagado” em muitos lugares) */
+h1,h2,h3,h4,h5,h6{
+  color: var(--text);
+}
+
+/* Cards (Bootstrap .card) */
+.card{
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Utilitárias */
+.text-primary-theme{ color: var(--text) !important; }
+.text-secondary-theme{ color: var(--text-2) !important; }
+
+/* Bootstrap .text-muted respeitando tema */
+.text-muted{
+  color: var(--muted) !important;
+}
+
+/* ===========================
+   Login (cara “portal”)
+   =========================== */
+.login-caixa{
+  border: 1px solid var(--inst-border);
+  border-radius: var(--inst-radius);
+  background: var(--inst-card);
+}
+
+.brand-title{
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: var(--inst-primary);
+}
+
+.brand-subtitle{
+  color: var(--inst-muted);
+  font-size: .92rem;
+}
+
+.form-label{
+  color: var(--text-2);
+}
+
+.page-foot{
+  color: var(--inst-muted);
+  font-size: .8rem;
+  text-align: center;
+  margin-top: 14px;
+}
+
+/* ===========================
+   Inputs
+   =========================== */
+.form-control{
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--input-text);
+}
+
+.form-control::placeholder{
+  color: var(--placeholder);
+}
+
+.form-control:focus{
+  border-color: color-mix(in oklab, var(--primary) 70%, transparent);
+  box-shadow: 0 0 0 .2rem var(--focus);
+}
+
+/* ===========================
+   Botões
+   =========================== */
+.btn-primary{
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #ffffff !important;
+}
+.btn-primary:hover{
+  background: var(--primary-2) !important;
+  border-color: var(--primary-2) !important;
+}
+
+.btn-outline-primary{
+  color: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+.btn-outline-primary:hover{
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #ffffff !important;
+}
+
+/* Bootstrap secondary outline ficava apagado no dark */
+:root[data-theme="dark"] .btn-outline-secondary{
+  color: var(--text-2) !important;
+  border-color: rgba(226, 232, 240, 0.35) !important;
+}
+:root[data-theme="dark"] .btn-outline-secondary:hover{
+  background: rgba(226, 232, 240, 0.10) !important;
+  border-color: rgba(226, 232, 240, 0.55) !important;
+  color: var(--text) !important;
+}
+
+/* ===========================
+   Navbar / Nav pills / Tabs
+   (corrige o dashboard “apagado”)
+   =========================== */
+
+/* Links default */
+.navbar,
+.navbar *{
+  color: var(--text-2);
+}
+
+/* Links e botões na navbar */
+.navbar .nav-link{
+  color: var(--text-2) !important;
+}
+.navbar .nav-link:hover{
+  color: var(--text) !important;
+}
+
+/* Pills (seu menu parece usar pills/btns) */
+.nav-pills .nav-link{
+  color: var(--text-2) !important;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+}
+.nav-pills .nav-link:hover{
+  color: var(--text) !important;
+  border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+}
+.nav-pills .nav-link.active{
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-color: var(--primary) !important;
+}
+
+/* ===========================
+   Alerts / Toasts (Bootstrap)
+   =========================== */
+.alert{
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .alert{
+  background: rgba(15, 23, 42, 0.65);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .toast,
+:root[data-theme="dark"] .toast-body{
+  background: var(--card);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* ===========================
+   Tabelas
+   =========================== */
+.table{
+  color: var(--text);
+}
+.table > :not(caption) > * > *{
+  background-color: transparent;
+  border-color: var(--border);
+}
+.table-striped > tbody > tr:nth-of-type(odd) > *{
+  color: var(--text);
+  background-color: color-mix(in oklab, var(--card) 92%, transparent);
+}
+
+/* ===========================
+   Modal (custom)
+   =========================== */
+.modal-backdrop-custom{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-card{
+  width: min(720px, 100%);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+
+/* ===========================
+   Topbar
+   =========================== */
+.topbar{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(8px);
+  background: color-mix(in oklab, var(--bg) 85%, transparent);
+  border-bottom: 1px solid var(--border);
+}
