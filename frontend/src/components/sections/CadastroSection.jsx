@@ -4,19 +4,26 @@ import { useToast } from "../../ui/ToastContext";
 
 export default function CadastroSection() {
   const [tab, setTab] = useState("matriculas");
+
   return (
     <div className="card p-3">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-        <h4 className="m-0">Cadastro (Admin)</h4>
+        <h4 className="m-0">Cadastro</h4>
+
         <div className="d-flex flex-wrap gap-2">
           <button
-            className={`btn btn-sm ${tab === "matriculas" ? "btn-primary" : "btn-outline-primary"}`}
+            className={`btn btn-sm ${
+              tab === "matriculas" ? "btn-primary" : "btn-outline-primary"
+            }`}
             onClick={() => setTab("matriculas")}
           >
             Matrículas pendentes
           </button>
+
           <button
-            className={`btn btn-sm ${tab === "professor" ? "btn-primary" : "btn-outline-primary"}`}
+            className={`btn btn-sm ${
+              tab === "professor" ? "btn-primary" : "btn-outline-primary"
+            }`}
             onClick={() => setTab("professor")}
           >
             Cadastrar professor
@@ -28,6 +35,26 @@ export default function CadastroSection() {
     </div>
   );
 }
+
+const CURSOS = [
+  "Engenharia Elétrica",
+  "Engenharia Mecânica",
+  "Engenharia Civil",
+  "Engenharia Quimica",
+  "Engenharia de Automação e Controle",
+  "Engenharia de Produção",
+  "Engenharia de Software",
+  "Engenharia de Robôs",
+];
+
+const DISCIPLINAS = [
+  "Cálculo Numérico",
+  "Física",
+  "Química",
+  "Desenho Técnico",
+  "Sociologia",
+  "Filosofia",
+];
 
 function MatriculasPendentes() {
   const toast = useToast();
@@ -128,7 +155,7 @@ function MatriculasPendentes() {
           <table className="table table-sm table-striped align-middle">
             <thead>
               <tr>
-                <th>ID</th>
+                {/* ID REMOVIDO */}
                 <th>Nome</th>
                 <th>E-mail</th>
                 <th>Nascimento</th>
@@ -147,16 +174,22 @@ function MatriculasPendentes() {
 
                 return (
                   <tr key={String(id)}>
-                    <td>{String(id)}</td>
+                    {/* ID NÃO EXIBIDO */}
                     <td>{String(nome)}</td>
                     <td>{String(email)}</td>
                     <td>{dn ? new Date(dn).toLocaleDateString() : "-"}</td>
                     <td>{dc ? new Date(dc).toLocaleString() : "-"}</td>
                     <td className="d-flex gap-2">
-                      <button className="btn btn-sm btn-success" onClick={() => openAction(s, "aprovar")}>
+                      <button
+                        className="btn btn-sm btn-success"
+                        onClick={() => openAction(s, "aprovar")}
+                      >
                         Aprovar
                       </button>
-                      <button className="btn btn-sm btn-outline-danger" onClick={() => openAction(s, "rejeitar")}>
+                      <button
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => openAction(s, "rejeitar")}
+                      >
                         Rejeitar
                       </button>
                     </td>
@@ -166,7 +199,7 @@ function MatriculasPendentes() {
 
               {pendentes.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-muted">
+                  <td colSpan={5} className="text-muted">
                     Nenhuma matrícula pendente.
                   </td>
                 </tr>
@@ -180,8 +213,14 @@ function MatriculasPendentes() {
         <div className="modal-backdrop-custom" role="dialog" aria-modal="true">
           <div className="modal-card">
             <div className="d-flex justify-content-between align-items-center mb-2">
-              <h5 className="m-0">{acao === "aprovar" ? "Aprovar matrícula" : "Rejeitar matrícula"}</h5>
-              <button className="btn btn-sm btn-outline-secondary" onClick={closeAction} disabled={sending}>
+              <h5 className="m-0">
+                {acao === "aprovar" ? "Aprovar matrícula" : "Rejeitar matrícula"}
+              </h5>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={closeAction}
+                disabled={sending}
+              >
                 Fechar
               </button>
             </div>
@@ -191,10 +230,13 @@ function MatriculasPendentes() {
                 <b>Aluno:</b> {selected.nome} ({selected.email})
               </div>
               <div className="text-muted">
-                <b>CPF:</b> {selected.cpf} | <b>RG:</b> {selected.rg} | <b>Celular:</b> {selected.celular}
+                <b>CPF:</b> {selected.cpf} | <b>RG:</b> {selected.rg} |{" "}
+                <b>Celular:</b> {selected.celular}
               </div>
               <div className="text-muted">
-                <b>Endereço:</b> {selected.rua}, {selected.numeroCasa} - {selected.bairro} - {selected.cidade}/{selected.estado} - CEP {selected.cep}
+                <b>Endereço:</b> {selected.rua}, {selected.numeroCasa} -{" "}
+                {selected.bairro} - {selected.cidade}/{selected.estado} - CEP{" "}
+                {selected.cep}
               </div>
             </div>
 
@@ -205,20 +247,30 @@ function MatriculasPendentes() {
                   <input
                     className="form-control"
                     value={form.ra}
-                    onChange={(e) => setForm((p) => ({ ...p, ra: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, ra: e.target.value }))
+                    }
                     disabled={sending}
                   />
                 </div>
 
                 <div className="col-12 col-md-6">
                   <label className="form-label">Turma (obrigatório)</label>
-                  <input
-                    className="form-control"
+                  <select
+                    className="form-select"
                     value={form.turma}
-                    onChange={(e) => setForm((p) => ({ ...p, turma: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, turma: e.target.value }))
+                    }
                     disabled={sending}
-                    placeholder="Ex: 3A"
-                  />
+                  >
+                    <option value="">Selecione um curso</option>
+                    {CURSOS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
@@ -229,24 +281,28 @@ function MatriculasPendentes() {
                 className="form-control"
                 rows={3}
                 value={form.observacao}
-                onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, observacao: e.target.value }))
+                }
                 disabled={sending}
               />
             </div>
 
             <div className="d-grid">
               <button
-                className={`btn ${acao === "aprovar" ? "btn-success" : "btn-danger"}`}
+                className={`btn ${
+                  acao === "aprovar" ? "btn-success" : "btn-danger"
+                }`}
                 onClick={submit}
                 disabled={!canSubmit}
               >
-                {sending ? "Enviando..." : acao === "aprovar" ? "Confirmar aprovação" : "Confirmar rejeição"}
+                {sending
+                  ? "Enviando..."
+                  : acao === "aprovar"
+                  ? "Confirmar aprovação"
+                  : "Confirmar rejeição"}
               </button>
             </div>
-
-            <small className="text-muted d-block mt-2">
-              Ao aprovar, o sistema cria o aluno + cria usuário e envia e-mail (se SMTP estiver OK).
-            </small>
           </div>
         </div>
       )}
@@ -258,7 +314,6 @@ function CadastroProfessor() {
   const toast = useToast();
 
   const [loading, setLoading] = useState(false);
-
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [disciplina, setDisciplina] = useState("");
@@ -279,7 +334,7 @@ function CadastroProfessor() {
         disciplina: disciplina.trim(),
       });
 
-      toast.success("Professor cadastrado! Credenciais enviadas por e-mail (se SMTP estiver OK).");
+      toast.success("Professor cadastrado!");
       setNome("");
       setEmail("");
       setDisciplina("");
@@ -296,36 +351,45 @@ function CadastroProfessor() {
 
   return (
     <div className="row g-3">
-      <div className="col-12 col-lg-6">
+      <div className="col-12 col-lg-12">
         <form className="card p-3" onSubmit={submit}>
           <h5 className="mb-2">Novo professor</h5>
 
           <label className="form-label">Nome</label>
-          <input className="form-control mb-2" value={nome} onChange={(e) => setNome(e.target.value)} disabled={loading} />
+          <input
+            className="form-control mb-2"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            disabled={loading}
+          />
 
           <label className="form-label">E-mail</label>
-          <input className="form-control mb-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={loading} />
+          <input
+            className="form-control mb-2"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
 
           <label className="form-label">Disciplina</label>
-          <input className="form-control mb-3" value={disciplina} onChange={(e) => setDisciplina(e.target.value)} disabled={loading} />
+          <select
+            className="form-select mb-3"
+            value={disciplina}
+            onChange={(e) => setDisciplina(e.target.value)}
+          >
+            <option value="">Selecione a disciplina</option>
+            {DISCIPLINAS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
 
           <button className="btn btn-primary" disabled={loading}>
             {loading ? "Salvando..." : "Cadastrar"}
           </button>
-
-          <small className="text-muted d-block mt-2">
-            O back cria usuário (Professor), marca primeiro acesso e envia e-mail com credenciais.
-          </small>
         </form>
-      </div>
-
-      <div className="col-12 col-lg-6">
-        <div className="card p-3">
-          <h5 className="mb-2">Dica</h5>
-          <p className="m-0 text-muted">
-            Se o e-mail não chegar, normalmente é configuração SMTP no backend.
-          </p>
-        </div>
       </div>
     </div>
   );

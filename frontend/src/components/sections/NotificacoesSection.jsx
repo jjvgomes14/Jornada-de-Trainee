@@ -1,12 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { useToast } from "../../ui/ToastContext";
-
-function formatDateTime(v) {
-  if (!v) return "-";
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
-}
 
 export default function NotificacoesSection() {
   const toast = useToast();
@@ -14,7 +8,6 @@ export default function NotificacoesSection() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
 
-  const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [busyAll, setBusyAll] = useState(false);
 
@@ -37,23 +30,15 @@ export default function NotificacoesSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-
-    return items.filter((n) => {
-      const msg = String(n.mensagem ?? n.Mensagem ?? "").toLowerCase();
-      const tituloEvento = String(n.eventoTitulo ?? n.EventoTitulo ?? "").toLowerCase();
-      const data = String(n.dataCriacao ?? n.DataCriacao ?? "").toLowerCase();
-      return msg.includes(q) || tituloEvento.includes(q) || data.includes(q);
-    });
-  }, [items, query]);
-
   async function removeOne(id) {
-    setBusyId(String(id));
+    const idStr = String(id);
+    setBusyId(idStr);
+
     try {
-      await api.delete(`/Notificacoes/${id}`);
-      setItems((prev) => prev.filter((x) => String(x.id ?? x.Id) !== String(id)));
+      // DELETE individual (rota que você adicionou no backend)
+      await api.delete(`/Notificacoes/eventos/${idStr}`);
+
+      setItems((prev) => prev.filter((x) => String(x.id ?? x.Id) !== idStr));
       toast.success("Notificação excluída.");
     } catch (err) {
       const apiMsg =
@@ -71,10 +56,9 @@ export default function NotificacoesSection() {
 
     setBusyAll(true);
     try {
-      for (const n of items) {
-        const id = n.id ?? n.Id;
-        await api.delete(`/Notificacoes/${id}`);
-      }
+      // DELETE limpar tudo (rota que você adicionou no backend)
+      await api.delete("/Notificacoes/eventos");
+
       setItems([]);
       toast.success("Todas as notificações foram removidas.");
     } catch (err) {
@@ -94,7 +78,11 @@ export default function NotificacoesSection() {
         <h4 className="m-0">Notificações</h4>
 
         <div className="d-flex gap-2">
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => load(true)} disabled={loading}>
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => load(true)}
+            disabled={loading}
+          >
             {loading ? "Atualizando..." : "Recarregar"}
           </button>
 
@@ -108,41 +96,28 @@ export default function NotificacoesSection() {
         </div>
       </div>
 
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-md-6">
-          <label className="form-label">Buscar</label>
-          <input
-            className="form-control"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Digite para filtrar..."
-          />
-        </div>
-
-        <div className="col-12 col-md-6 text-muted">
-          Total: <b>{filtered.length}</b>
-        </div>
+      <div className="text-muted mb-3">
+        Total: <b>{items.length}</b>
       </div>
 
       {loading ? (
         <div>Carregando...</div>
-      ) : filtered.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="text-muted">Nenhuma notificação encontrada.</div>
       ) : (
         <div className="table-responsive">
           <table className="table table-sm table-striped align-middle">
             <thead>
               <tr>
-                <th>Data</th>
                 <th>Evento</th>
                 <th>Mensagem</th>
                 <th style={{ width: 140 }}>Ações</th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.map((n) => {
+              {items.map((n) => {
                 const id = n.id ?? n.Id;
-                const dataCriacao = n.dataCriacao ?? n.DataCriacao;
                 const eventoTitulo = n.eventoTitulo ?? n.EventoTitulo ?? "-";
                 const mensagem = n.mensagem ?? n.Mensagem ?? "-";
 
@@ -150,7 +125,6 @@ export default function NotificacoesSection() {
 
                 return (
                   <tr key={String(id)}>
-                    <td>{formatDateTime(dataCriacao)}</td>
                     <td>{String(eventoTitulo)}</td>
                     <td>{String(mensagem)}</td>
                     <td>
@@ -167,10 +141,6 @@ export default function NotificacoesSection() {
               })}
             </tbody>
           </table>
-
-          <small className="text-muted d-block mt-2">
-            Notificações são geradas quando eventos são criados no calendário.
-          </small>
         </div>
       )}
     </div>

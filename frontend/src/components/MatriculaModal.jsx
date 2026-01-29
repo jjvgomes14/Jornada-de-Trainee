@@ -28,6 +28,61 @@ function maskCEP(value) {
   return `${d.slice(0, 5)}-${d.slice(5)}`;
 }
 
+function maskCPF(value) {
+  const d = onlyDigits(value).slice(0, 11);
+  return d
+    .replace(/^(\d{0,3})/, "$1")
+    .replace(/^(\d{3})(\d{0,3})/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d{0,3})/, "$1.$2.$3")
+    .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d{0,2})/, "$1.$2.$3-$4")
+    .replace(/[-.]$/, "");
+}
+
+function maskRG(value) {
+  // RG varia por estado, então aqui vai um mask “leve” só com dígitos e separadores comuns
+  const d = onlyDigits(value).slice(0, 9);
+  // Ex: 12.345.678-9 (ajuste se quiser outro formato)
+  return d
+    .replace(/^(\d{0,2})/, "$1")
+    .replace(/^(\d{2})(\d{0,3})/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d{0,3})/, "$1.$2.$3")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d{0,1})/, "$1.$2.$3-$4")
+    .replace(/[-.]$/, "");
+}
+
+function buildApiErrorMessage(err) {
+  // Axios: err.response.data pode ser string, { message }, ou ModelState (objeto com arrays)
+  const data = err?.response?.data;
+
+  // 1) formato padrão do backend: { message: "..." }
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+
+  // 2) se o backend retornar string direta
+  if (typeof data === "string" && data.trim()) return data;
+
+  // 3) ModelState do ASP.NET: { "Campo": ["erro1", "erro2"], ... }
+  if (data && typeof data === "object") {
+    // alguns backends retornam { errors: { ... } }
+    const errorsObj = data.errors && typeof data.errors === "object" ? data.errors : data;
+
+    const msgs = [];
+    for (const key of Object.keys(errorsObj)) {
+      const val = errorsObj[key];
+      if (Array.isArray(val)) {
+        for (const m of val) if (typeof m === "string" && m.trim()) msgs.push(m.trim());
+      } else if (typeof val === "string" && val.trim()) {
+        msgs.push(val.trim());
+      }
+    }
+    if (msgs.length) return msgs.join(" | ");
+  }
+
+  // 4) fallback
+  const status = err?.response?.status;
+  if (status) return `Falha na requisição (HTTP ${status}).`;
+  return "Erro ao enviar solicitação. Verifique os dados e tente novamente.";
+}
+
 export default function MatriculaModal({ open, onClose }) {
   const toast = useToast();
 
@@ -37,7 +92,11 @@ export default function MatriculaModal({ open, onClose }) {
   const [form, setForm] = useState({
     nome: "",
     email: "",
+    dataNascimento: "", // YYYY-MM-DD
+    rg: "",
+    cpf: "",
     telefone: "",
+
     cep: "",
     rua: "",
     numero: "",
@@ -55,7 +114,11 @@ export default function MatriculaModal({ open, onClose }) {
       setForm({
         nome: "",
         email: "",
+        dataNascimento: "",
+        rg: "",
+        cpf: "",
         telefone: "",
+
         cep: "",
         rua: "",
         numero: "",
@@ -94,6 +157,7 @@ export default function MatriculaModal({ open, onClose }) {
         setCepLoading(false);
       }
     }
+
     fetchCep();
   }, [cepDigits, toast]);
 
@@ -104,7 +168,11 @@ export default function MatriculaModal({ open, onClose }) {
   function validate() {
     if (!form.nome.trim()) return "Informe o nome.";
     if (!form.email.trim()) return "Informe o e-mail.";
-    if (!form.telefone.trim()) return "Informe o telefone.";
+    if (!form.dataNascimento) return "Informe a data de nascimento.";
+    if (!form.rg.trim()) return "Informe o RG.";
+    if (onlyDigits(form.cpf).length !== 11) return "Informe um CPF válido.";
+    if (onlyDigits(form.telefone).length < 10) return "Informe um celular válido.";
+
     if (onlyDigits(form.cep).length !== 8) return "Informe um CEP válido.";
     if (!form.rua.trim()) return "Informe a rua.";
     if (!form.numero.trim()) return "Informe o número.";
@@ -125,16 +193,22 @@ export default function MatriculaModal({ open, onClose }) {
 
     setLoading(true);
     try {
+      // Backend (MatriculaSolicitacaoDto) exige estes nomes:
+      // Nome, Email, DataNascimento, RG, CPF, Celular, CEP, Estado, Cidade, Bairro, Rua, NumeroCasa
       const payload = {
         nome: form.nome.trim(),
         email: form.email.trim(),
-        telefone: onlyDigits(form.telefone),
+        dataNascimento: `${form.dataNascimento}T00:00:00`,
+        rg: form.rg.trim(),
+        cpf: onlyDigits(form.cpf),
+        celular: onlyDigits(form.telefone),
+
         cep: onlyDigits(form.cep),
-        rua: form.rua.trim(),
-        numero: form.numero.trim(),
-        bairro: form.bairro.trim(),
-        cidade: form.cidade.trim(),
         estado: form.estado.trim(),
+        cidade: form.cidade.trim(),
+        bairro: form.bairro.trim(),
+        rua: form.rua.trim(),
+        numeroCasa: form.numero.trim(),
       };
 
       await api.post("/Matriculas/solicitar", payload);
@@ -142,11 +216,7 @@ export default function MatriculaModal({ open, onClose }) {
       toast.success("Solicitação de matrícula enviada!");
       onClose();
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Erro ao enviar solicitação. Verifique os dados e tente novamente.";
-      toast.error(String(apiMsg));
+      toast.error(buildApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -193,13 +263,45 @@ export default function MatriculaModal({ open, onClose }) {
             />
           </div>
 
-          <div className="col-12">
-            <label className="form-label">Telefone</label>
+          <div className="col-6">
+            <label className="form-label">Data de nascimento</label>
+            <input
+              className="form-control"
+              type="date"
+              value={form.dataNascimento}
+              onChange={(e) => setField("dataNascimento", e.target.value)}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="col-6">
+            <label className="form-label">Celular</label>
             <input
               className="form-control"
               value={form.telefone}
               onChange={(e) => setField("telefone", maskPhoneBR(e.target.value))}
               placeholder="(11) 99999-9999"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="col-6">
+            <label className="form-label">RG</label>
+            <input
+              className="form-control"
+              value={form.rg}
+              onChange={(e) => setField("rg", maskRG(e.target.value))}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="col-6">
+            <label className="form-label">CPF</label>
+            <input
+              className="form-control"
+              value={form.cpf}
+              onChange={(e) => setField("cpf", maskCPF(e.target.value))}
+              placeholder="000.000.000-00"
               disabled={loading}
             />
           </div>

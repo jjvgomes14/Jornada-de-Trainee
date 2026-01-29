@@ -211,13 +211,7 @@ export default function CalendarioSection({ role }) {
           )}
         </div>
       </div>
-
-      {!canEdit && (
-        <div className="text-muted mb-2">
-          Você pode visualizar os eventos. Apenas <b>Professor</b> e <b>Admin</b> podem criar/editar/excluir.
-        </div>
-      )}
-
+      
       {loading ? (
         <div>Carregando...</div>
       ) : (
@@ -300,10 +294,6 @@ export default function CalendarioSection({ role }) {
                 <div className="text-muted">Visualização apenas.</div>
               )}
             </div>
-
-            <small className="text-muted d-block mt-2">
-              O backend salva apenas datas (sem horário).
-            </small>
           </div>
         </div>
       )}

@@ -31,4 +31,39 @@ public class NotificacoesController : ControllerBase
 
         return Ok(list);
     }
+
+    // ✅ DELETE: /api/Notificacoes/eventos/{id}
+    [HttpDelete("eventos/{id:int}")]
+    [Authorize(Roles = UserRoles.Aluno)]
+    public async Task<IActionResult> ExcluirEvento(int id)
+    {
+        var notif = await _db.NotificacoesEventos
+            .FirstOrDefaultAsync(n => n.Id == id && n.PublicoAlvo == "Aluno");
+
+        if (notif == null)
+            return NotFound(new { message = "Notificação não encontrada." });
+
+        _db.NotificacoesEventos.Remove(notif);
+        await _db.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    // ✅ DELETE: /api/Notificacoes/eventos  (limpar tudo)
+    [HttpDelete("eventos")]
+    [Authorize(Roles = UserRoles.Aluno)]
+    public async Task<IActionResult> LimparEventos()
+    {
+        var list = await _db.NotificacoesEventos
+            .Where(n => n.PublicoAlvo == "Aluno")
+            .ToListAsync();
+
+        if (list.Count == 0)
+            return NoContent();
+
+        _db.NotificacoesEventos.RemoveRange(list);
+        await _db.SaveChangesAsync();
+
+        return NoContent();
+    }
 }
