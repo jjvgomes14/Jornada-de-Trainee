@@ -29,12 +29,12 @@ export default function Dashboard() {
         id: "home",
         label: "Home",
         roles: ["admin", "professor", "aluno"],
-        render: () => <HomeSection user={user} />,
+        render: () => (<HomeSection navItems={navItems} onSelectSection={setActiveSection} />),
       },
       {
         id: "listagem",
         label: "Listagem",
-        roles: ["admin", "professor"],
+        roles: ["admin", "professor", "aluno"],
         render: () => <ListagemSection />,
       },
       {
@@ -52,13 +52,13 @@ export default function Dashboard() {
       {
         id: "calendario",
         label: "Calendário",
-        roles: ["admin", "professor", "aluno"],
+        roles: ["professor", "aluno"],
         render: () => <CalendarioSection role={role} />,
       },
       {
         id: "notas",
         label: "Notas",
-        roles: ["admin", "professor", "aluno"],
+        roles: ["professor", "aluno"],
         render: () => <NotasSection role={role} />,
       },
       {

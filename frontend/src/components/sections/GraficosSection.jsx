@@ -93,7 +93,7 @@ function GraficoProfessor() {
   return (
     <div className="card p-3">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h4 className="m-0">Gráficos (Professor)</h4>
+        <h4 className="m-0">Gráficos</h4>
         <button className="btn btn-sm btn-outline-secondary" onClick={() => load(true)} disabled={loading}>
           {loading ? "Atualizando..." : "Recarregar"}
         </button>
@@ -164,7 +164,7 @@ function GraficoAdmin() {
   return (
     <div className="card p-3">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h4 className="m-0">Gráficos (Admin)</h4>
+        <h4 className="m-0">Gráficos</h4>
         <div className="d-flex gap-2">
           <button className="btn btn-sm btn-outline-secondary" onClick={() => loadTurmas(true)} disabled={loadingTurmas || loadingChart}>
             {loadingTurmas ? "..." : "Recarregar turmas"}
@@ -243,7 +243,7 @@ function GraficoAluno() {
   return (
     <div className="card p-3">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h4 className="m-0">Gráficos (Aluno)</h4>
+        <h4 className="m-0">Gráficos </h4>
         <button className="btn btn-sm btn-outline-secondary" onClick={() => load(true)} disabled={loading}>
           {loading ? "Atualizando..." : "Recarregar"}
         </button>
