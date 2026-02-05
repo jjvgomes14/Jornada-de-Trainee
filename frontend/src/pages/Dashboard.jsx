@@ -14,6 +14,10 @@ import CalendarioSection from "../components/sections/CalendarioSection";
 import NotasSection from "../components/sections/NotasSection";
 import NotificacoesSection from "../components/sections/NotificacoesSection";
 
+// ✅ IMPORTS QUE ESTAVAM FALTANDO / NECESSÁRIOS
+import PresencasSection from "../components/sections/PresencasSection";
+import FaltasSection from "../components/sections/FaltasSection";
+
 const STORAGE_ACTIVE_SECTION = "dashboardActiveSection";
 
 export default function Dashboard() {
@@ -22,14 +26,19 @@ export default function Dashboard() {
   const role = useMemo(() => normalizeRole(user?.role), [user]);
   const mustChange = !!user?.mustChangePassword;
 
-  // Mapa único das seções (tudo implementado)
+  // ⚠️ navItems é usado dentro do sections (HomeSection recebe navItems)
+  // então precisamos declarar sections e navItems com cuidado.
+  // Aqui mantive sua estrutura, só garantindo que as seções existam e imports também.
+
   const sections = useMemo(
     () => [
       {
         id: "home",
         label: "Home",
         roles: ["admin", "professor", "aluno"],
-        render: () => (<HomeSection navItems={navItems} onSelectSection={setActiveSection} />),
+        render: () => (
+          <HomeSection navItems={navItems} onSelectSection={setActiveSection} />
+        ),
       },
       {
         id: "listagem",
@@ -61,6 +70,23 @@ export default function Dashboard() {
         roles: ["professor", "aluno"],
         render: () => <NotasSection role={role} />,
       },
+
+      // ✅ PROFESSOR LANÇA PRESENÇA/FALTA AQUI
+      {
+        id: "presencas",
+        label: "Presenças",
+        roles: ["professor"],
+        render: () => <PresencasSection />,
+      },
+
+      // ✅ ALUNO VÊ AS FALTAS AQUI
+      {
+        id: "faltas",
+        label: "Faltas",
+        roles: ["aluno"],
+        render: () => <FaltasSection />,
+      },
+
       {
         id: "notificacoes",
         label: "Notificações",
@@ -68,10 +94,14 @@ export default function Dashboard() {
         render: () => <NotificacoesSection />,
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [role, user]
   );
 
-  const navItems = useMemo(() => sections.filter((s) => s.roles.includes(role)), [sections, role]);
+  const navItems = useMemo(
+    () => sections.filter((s) => s.roles.includes(role)),
+    [sections, role]
+  );
 
   const [activeSection, setActiveSection] = useState(() => {
     const saved = localStorage.getItem(STORAGE_ACTIVE_SECTION);
@@ -100,7 +130,6 @@ export default function Dashboard() {
 
   return (
     <div className="container py-3" style={{ position: "relative" }}>
-      {/* Modal obrigatório: primeiro acesso */}
       <ChangePasswordModal
         open={mustChange}
         username={user?.username}
@@ -110,7 +139,6 @@ export default function Dashboard() {
         }}
       />
 
-      {/* Enquanto mustChangePassword estiver ativo, trava o app */}
       <div
         style={{
           filter: mustChange ? "blur(2px)" : "none",
@@ -128,7 +156,9 @@ export default function Dashboard() {
         {!current ? (
           <div className="alert alert-warning">Seção não encontrada.</div>
         ) : !hasPermission ? (
-          <div className="alert alert-warning">Você não tem permissão para acessar esta seção.</div>
+          <div className="alert alert-warning">
+            Você não tem permissão para acessar esta seção.
+          </div>
         ) : (
           current.render()
         )}
