@@ -10,17 +10,13 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===============================================
-// 1) CONFIGURAÇÃO DO BANCO DE DADOS
-// ===============================================
+// CONFIGURAÇÃO DO BANCO DE DADOS
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
-// ===============================================
-// 2) SERVIÇOS DA APLICAÇÃO
-// ===============================================
+// SERVIÇOS DA APLICAÇÃO
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<EmailService>();
 
@@ -49,9 +45,7 @@ builder.Services.AddSwaggerGen(opt =>
     });
 });
 
-// ===============================================
-// 3) AUTENTICAÇÃO JWT
-// ===============================================
+// AUTENTICAÇÃO JWT
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
@@ -76,9 +70,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ===============================================
-// 4) CORS (libera apenas o front-end local)
-// ===============================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend",
@@ -93,22 +84,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ===============================================
-// 5) SWAGGER NO DESENVOLVIMENTO
-// ===============================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// ===============================================
-// 6) MIDDLEWARES
-// ===============================================
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 // ===============================================

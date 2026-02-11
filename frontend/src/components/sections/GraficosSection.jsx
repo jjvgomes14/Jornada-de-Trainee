@@ -50,7 +50,16 @@ function normalizePairs(data) {
 function makeBarData(pairs, datasetLabel) {
   return {
     labels: pairs.map((p) => p.label),
-    datasets: [{ label: datasetLabel, data: pairs.map((p) => p.value) }],
+    datasets: [
+      {
+        label: datasetLabel,
+        data: pairs.map((p) => p.value),
+        backgroundColor: "#3e82e9",
+        borderColor: "#3e82e9",
+        borderWidth: 1,
+        borderRadius: 6,
+      },
+    ],
   };
 }
 
