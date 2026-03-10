@@ -58,10 +58,8 @@ const DISCIPLINAS = [
 
 function MatriculasPendentes() {
   const toast = useToast();
-
   const [loading, setLoading] = useState(true);
   const [pendentes, setPendentes] = useState([]);
-
   const [selected, setSelected] = useState(null);
   const [acao, setAcao] = useState(null);
   const [form, setForm] = useState({ ra: "", turma: "", observacao: "" });
@@ -83,7 +81,6 @@ function MatriculasPendentes() {
 
   useEffect(() => {
     load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openAction(item, actionType) {

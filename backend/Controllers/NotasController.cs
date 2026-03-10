@@ -257,27 +257,52 @@ public class NotasController : ControllerBase
     // GET: /api/Notas/grafico-admin?turma=1A
     [HttpGet("grafico-admin")]
     [Authorize(Roles = UserRoles.Administrador)]
-    public async Task<ActionResult<IEnumerable<object>>> GraficoAdmin([FromQuery] string turma)
+    public async Task<ActionResult<IEnumerable<object>>> GraficoAdmin([FromQuery] string? turma = null)
     {
-        if (string.IsNullOrWhiteSpace(turma))
-            return BadRequest(new { message = "Turma é obrigatória." });
+        var turmaNormalizada = (turma ?? string.Empty).Trim();
 
-        var turmaNormalizada = turma.Trim();
+        var baseQuery = _db.Notas
+            .Include(x => x.Aluno)
+            .Include(x => x.Disciplina)
+            .AsQueryable();
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Aluno)
-                .Include(x => x.Disciplina)
-            where n.Aluno!.Turma == turmaNormalizada
-            group n by n.Disciplina!.Nome into g
-            select new
-            {
-                disciplina = g.Key,
-                media = g.Average(x => x.Valor)
-            };
+        var isTodas = string.IsNullOrWhiteSpace(turmaNormalizada) ||
+                      string.Equals(turmaNormalizada, "Todas", StringComparison.OrdinalIgnoreCase);
 
-        var resultado = await query.AsNoTracking().ToListAsync();
-        return Ok(resultado);
+        if (isTodas)
+        {
+            // Retorna: uma linha por (Disciplina, Turma)
+            var queryTodas =
+                from n in baseQuery
+                group n by new { Disciplina = n.Disciplina!.Nome, Turma = n.Aluno!.Turma } into g
+                select new
+                {
+                    disciplina = g.Key.Disciplina,
+                    turma = g.Key.Turma,
+                    media = g.Average(x => x.Valor)
+                };
+
+            var resultadoTodas = await queryTodas.AsNoTracking().ToListAsync();
+            return Ok(resultadoTodas);
+        }
+        else
+        {
+            // Retorna: uma linha por Disciplina (da turma escolhida), mantendo 'turma' no payload
+            baseQuery = baseQuery.Where(n => n.Aluno!.Turma == turmaNormalizada);
+
+            var queryUmaTurma =
+                from n in baseQuery
+                group n by n.Disciplina!.Nome into g
+                select new
+                {
+                    disciplina = g.Key,
+                    turma = turmaNormalizada,
+                    media = g.Average(x => x.Valor)
+                };
+
+            var resultadoUmaTurma = await queryUmaTurma.AsNoTracking().ToListAsync();
+            return Ok(resultadoUmaTurma);
+        }
     }
 
     // ==========================
