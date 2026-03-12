@@ -10,32 +10,70 @@ function buildApiErrorMessage(err) {
   if (typeof data?.message === "string" && data.message.trim()) return data.message;
   if (typeof data === "string" && data.trim()) return data;
 
-  // ASP.NET ModelState: { field: [ "msg1", "msg2" ], ... } ou { errors: { ... } }
   if (data && typeof data === "object") {
     const errorsObj = data.errors && typeof data.errors === "object" ? data.errors : data;
 
     const msgs = [];
     for (const key of Object.keys(errorsObj)) {
       const val = errorsObj[key];
+
       if (Array.isArray(val)) {
-        for (const m of val) if (typeof m === "string" && m.trim()) msgs.push(m.trim());
+        for (const msg of val) {
+          if (typeof msg === "string" && msg.trim()) msgs.push(msg.trim());
+        }
       } else if (typeof val === "string" && val.trim()) {
         msgs.push(val.trim());
       }
     }
+
     if (msgs.length) return msgs.join(" | ");
   }
 
   const status = err?.response?.status;
   if (status) return `Falha na requisição (HTTP ${status}).`;
+
   return "Ocorreu um erro ao processar a operação.";
+}
+
+function getId(obj) {
+  return obj?.id ?? obj?.Id ?? "";
+}
+
+function getNome(obj) {
+  return obj?.nome ?? obj?.Nome ?? obj?.name ?? "";
+}
+
+function getEmail(obj) {
+  return obj?.email ?? obj?.Email ?? "";
+}
+
+function getRa(obj) {
+  return obj?.ra ?? obj?.RA ?? "";
+}
+
+function getTurma(obj) {
+  return (
+    obj?.turma ??
+    obj?.Turma ??
+    obj?.nomeTurma ??
+    obj?.NomeTurma ??
+    obj?.turmaNome ??
+    obj?.TurmaNome ??
+    ""
+  );
+}
+
+function getDisciplina(obj) {
+  return obj?.disciplina ?? obj?.Disciplina ?? "";
 }
 
 export default function ListagemSection() {
   const toast = useToast();
   const { user } = useAuth();
+
   const role = useMemo(() => normalizeRole(user?.role), [user]);
   const isAdmin = role === "admin";
+  const canAccess = role === "admin" || role === "professor";
 
   const [loading, setLoading] = useState(true);
 
@@ -45,14 +83,10 @@ export default function ListagemSection() {
 
   const [tab, setTab] = useState("alunos");
   const [turmaFiltro, setTurmaFiltro] = useState("");
-
-  // ✅ NOVO: filtro de professores
   const [disciplinaFiltro, setDisciplinaFiltro] = useState("");
 
-  // Modal edição
   const [editOpen, setEditOpen] = useState(false);
-  const [editType, setEditType] = useState(null); // "aluno" | "professor"
-  const [editItem, setEditItem] = useState(null);
+  const [editType, setEditType] = useState(null);
   const [editLoading, setEditLoading] = useState(false);
 
   const [editFormAluno, setEditFormAluno] = useState({
@@ -72,14 +106,19 @@ export default function ListagemSection() {
     usuarioId: null,
   });
 
-  // Modal exclusão
   const [delOpen, setDelOpen] = useState(false);
-  const [delType, setDelType] = useState(null); // "aluno" | "professor"
+  const [delType, setDelType] = useState(null);
   const [delItem, setDelItem] = useState(null);
   const [delLoading, setDelLoading] = useState(false);
 
   async function loadAll(showToast = false) {
+    if (!canAccess) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+
     try {
       const [a, p, t] = await Promise.all([
         api.get("/Alunos"),
@@ -101,83 +140,56 @@ export default function ListagemSection() {
 
   useEffect(() => {
     loadAll(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canAccess]);
 
   const alunosFiltrados = useMemo(() => {
     if (!turmaFiltro) return alunos;
-    return alunos.filter((x) => {
-      const turma =
-        x.turma ??
-        x.Turma ??
-        x.nomeTurma ??
-        x.NomeTurma ??
-        x.turmaNome ??
-        x.TurmaNome ??
-        "";
-      return String(turma).toLowerCase() === String(turmaFiltro).toLowerCase();
+
+    return alunos.filter((aluno) => {
+      return String(getTurma(aluno)).toLowerCase() === String(turmaFiltro).toLowerCase();
     });
   }, [alunos, turmaFiltro]);
 
-  // ✅ NOVO: lista de disciplinas (para montar o dropdown)
   const disciplinas = useMemo(() => {
     const set = new Set();
-    for (const p of professores) {
-      const d = p.disciplina ?? p.Disciplina ?? "";
-      const v = String(d).trim();
-      if (v) set.add(v);
+
+    for (const professor of professores) {
+      const disciplina = String(getDisciplina(professor)).trim();
+      if (disciplina) set.add(disciplina);
     }
+
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [professores]);
 
-  // ✅ NOVO: professores filtrados por disciplina
   const professoresFiltrados = useMemo(() => {
     if (!disciplinaFiltro) return professores;
-    return professores.filter((p) => {
-      const d = p.disciplina ?? p.Disciplina ?? "";
-      return String(d).toLowerCase() === String(disciplinaFiltro).toLowerCase();
+
+    return professores.filter((professor) => {
+      return String(getDisciplina(professor)).toLowerCase() === String(disciplinaFiltro).toLowerCase();
     });
   }, [professores, disciplinaFiltro]);
 
-  function openEditAluno(a) {
-    const id = a.id ?? a.Id ?? "";
-    const nome = a.nome ?? a.Nome ?? a.name ?? "";
-    const email = a.email ?? a.Email ?? "";
-    const ra = a.ra ?? a.RA ?? "";
-    const turma =
-      a.turma ?? a.Turma ?? a.nomeTurma ?? a.NomeTurma ?? a.turmaNome ?? a.TurmaNome ?? "";
-
+  function openEditAluno(aluno) {
     setEditType("aluno");
-    setEditItem(a);
     setEditFormAluno({
-      id: String(id),
-      nome: String(nome),
-      email: String(email),
-      ra: String(ra),
-      turma: String(turma),
+      id: String(getId(aluno)),
+      nome: String(getNome(aluno)),
+      email: String(getEmail(aluno)),
+      ra: String(getRa(aluno)),
+      turma: String(getTurma(aluno)),
     });
     setEditOpen(true);
   }
 
-  function openEditProfessor(p) {
-    const id = p.id ?? p.Id ?? "";
-    const nome = p.nome ?? p.Nome ?? p.name ?? "";
-    const email = p.email ?? p.Email ?? "";
-    const disciplina = p.disciplina ?? p.Disciplina ?? "";
-
-    // IMPORTANTE: para não “zerar” no PUT, preservamos os campos do objeto vindo do back
-    const dataNascimento = p.dataNascimento ?? p.DataNascimento ?? null;
-    const usuarioId = p.usuarioId ?? p.UsuarioId ?? null;
-
+  function openEditProfessor(professor) {
     setEditType("professor");
-    setEditItem(p);
     setEditFormProfessor({
-      id: String(id),
-      nome: String(nome),
-      email: String(email),
-      disciplina: String(disciplina),
-      dataNascimento,
-      usuarioId,
+      id: String(getId(professor)),
+      nome: String(getNome(professor)),
+      email: String(getEmail(professor)),
+      disciplina: String(getDisciplina(professor)),
+      dataNascimento: professor?.dataNascimento ?? professor?.DataNascimento ?? null,
+      usuarioId: professor?.usuarioId ?? professor?.UsuarioId ?? null,
     });
     setEditOpen(true);
   }
@@ -186,7 +198,6 @@ export default function ListagemSection() {
     if (editLoading) return;
     setEditOpen(false);
     setEditType(null);
-    setEditItem(null);
   }
 
   function validateEdit() {
@@ -197,26 +208,31 @@ export default function ListagemSection() {
       if (!editFormAluno.turma.trim()) return "Informe a turma do aluno.";
       return "";
     }
+
     if (editType === "professor") {
       if (!editFormProfessor.nome.trim()) return "Informe o nome do professor.";
       if (!editFormProfessor.email.trim()) return "Informe o e-mail do professor.";
       if (!editFormProfessor.disciplina.trim()) return "Informe a disciplina do professor.";
       return "";
     }
+
     return "Tipo de edição inválido.";
   }
 
   async function submitEdit() {
     const msg = validateEdit();
+
     if (msg) {
       toast.error(msg);
       return;
     }
 
     setEditLoading(true);
+
     try {
       if (editType === "aluno") {
         const id = Number(editFormAluno.id);
+
         await api.put(`/Alunos/${id}`, {
           id,
           nome: editFormAluno.nome.trim(),
@@ -224,7 +240,8 @@ export default function ListagemSection() {
           ra: editFormAluno.ra.trim(),
           turma: editFormAluno.turma.trim(),
         });
-        toast.success("Aluno atualizado!");
+
+        toast.success("Aluno atualizado.");
       }
 
       if (editType === "professor") {
@@ -238,7 +255,8 @@ export default function ListagemSection() {
           dataNascimento: editFormProfessor.dataNascimento,
           usuarioId: editFormProfessor.usuarioId,
         });
-        toast.success("Professor atualizado!");
+
+        toast.success("Professor atualizado.");
       }
 
       closeEdit();
@@ -258,6 +276,7 @@ export default function ListagemSection() {
 
   function closeDelete() {
     if (delLoading) return;
+
     setDelOpen(false);
     setDelType(null);
     setDelItem(null);
@@ -267,8 +286,10 @@ export default function ListagemSection() {
     if (!delType || !delItem) return;
 
     setDelLoading(true);
+
     try {
-      const id = delItem.id ?? delItem.Id;
+      const id = getId(delItem);
+
       if (!id) {
         toast.error("ID inválido para exclusão.");
         return;
@@ -276,10 +297,10 @@ export default function ListagemSection() {
 
       if (delType === "aluno") {
         await api.delete(`/Alunos/${id}`);
-        toast.success("Aluno excluído!");
+        toast.success("Aluno excluído.");
       } else if (delType === "professor") {
         await api.delete(`/Professores/${id}`);
-        toast.success("Professor excluído!");
+        toast.success("Professor excluído.");
       }
 
       closeDelete();
@@ -289,6 +310,17 @@ export default function ListagemSection() {
     } finally {
       setDelLoading(false);
     }
+  }
+
+  if (!canAccess) {
+    return (
+      <div className="card p-3">
+        <h4 className="m-0 mb-2">Listagem</h4>
+        <div className="text-muted">
+          Esta seção está disponível apenas para administrador e professor.
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -303,6 +335,7 @@ export default function ListagemSection() {
           >
             Alunos
           </button>
+
           <button
             className={`btn btn-sm ${tab === "professores" ? "btn-primary" : "btn-outline-primary"}`}
             onClick={() => setTab("professores")}
@@ -328,16 +361,16 @@ export default function ListagemSection() {
             <>
               <div className="row g-2 align-items-end mb-3">
                 <div className="col-12 col-md-6">
-                  <label className="form-label">Filtrar por curso</label>
+                  <label className="form-label">Filtrar por turma</label>
                   <select
                     className="form-select"
                     value={turmaFiltro}
                     onChange={(e) => setTurmaFiltro(e.target.value)}
                   >
                     <option value="">Todas</option>
-                    {turmas.map((t) => (
-                      <option key={String(t)} value={String(t)}>
-                        {String(t)}
+                    {turmas.map((turma) => (
+                      <option key={String(turma)} value={String(turma)}>
+                        {String(turma)}
                       </option>
                     ))}
                   </select>
@@ -359,47 +392,34 @@ export default function ListagemSection() {
                       {isAdmin && <th style={{ width: 180 }}>Ações</th>}
                     </tr>
                   </thead>
+
                   <tbody>
-                    {alunosFiltrados.map((a) => {
-                      const id = a.id ?? a.Id ?? "";
-                      const nome = a.nome ?? a.Nome ?? a.name ?? "";
-                      const email = a.email ?? a.Email ?? "";
-                      const ra = a.ra ?? a.RA ?? "";
-                      const turma =
-                        a.turma ??
-                        a.Turma ??
-                        a.nomeTurma ??
-                        a.NomeTurma ??
-                        a.turmaNome ??
-                        a.TurmaNome ??
-                        "";
+                    {alunosFiltrados.map((aluno) => (
+                      <tr key={String(getId(aluno)) || `${getNome(aluno)}-${getEmail(aluno)}`}>
+                        <td>{String(getNome(aluno))}</td>
+                        <td>{String(getEmail(aluno))}</td>
+                        <td>{String(getRa(aluno))}</td>
+                        <td>{String(getTurma(aluno))}</td>
 
-                      return (
-                        <tr key={String(id) || `${nome}-${email}`}>
-                          <td>{String(nome)}</td>
-                          <td>{String(email)}</td>
-                          <td>{String(ra)}</td>
-                          <td>{String(turma)}</td>
+                        {isAdmin && (
+                          <td className="d-flex gap-2">
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => openEditAluno(aluno)}
+                            >
+                              Editar
+                            </button>
 
-                          {isAdmin && (
-                            <td className="d-flex gap-2">
-                              <button
-                                className="btn btn-sm btn-outline-primary"
-                                onClick={() => openEditAluno(a)}
-                              >
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => openDelete("aluno", a)}
-                              >
-                                Excluir
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => openDelete("aluno", aluno)}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
 
                     {alunosFiltrados.length === 0 && (
                       <tr>
@@ -416,7 +436,6 @@ export default function ListagemSection() {
 
           {tab === "professores" && (
             <>
-              {/* ✅ NOVO: filtro por disciplina + contador usando filtrados */}
               <div className="row g-2 align-items-end mb-3">
                 <div className="col-12 col-md-6">
                   <label className="form-label">Filtrar por disciplina</label>
@@ -426,9 +445,9 @@ export default function ListagemSection() {
                     onChange={(e) => setDisciplinaFiltro(e.target.value)}
                   >
                     <option value="">Todas</option>
-                    {disciplinas.map((d) => (
-                      <option key={String(d)} value={String(d)}>
-                        {String(d)}
+                    {disciplinas.map((disciplina) => (
+                      <option key={String(disciplina)} value={String(disciplina)}>
+                        {String(disciplina)}
                       </option>
                     ))}
                   </select>
@@ -449,38 +468,35 @@ export default function ListagemSection() {
                       {isAdmin && <th style={{ width: 180 }}>Ações</th>}
                     </tr>
                   </thead>
+
                   <tbody>
-                    {professoresFiltrados.map((p) => {
-                      const id = p.id ?? p.Id ?? "";
-                      const nome = p.nome ?? p.Nome ?? p.name ?? "";
-                      const email = p.email ?? p.Email ?? "";
-                      const disciplina = p.disciplina ?? p.Disciplina ?? "";
+                    {professoresFiltrados.map((professor) => (
+                      <tr
+                        key={String(getId(professor)) || `${getNome(professor)}-${getEmail(professor)}`}
+                      >
+                        <td>{String(getNome(professor))}</td>
+                        <td>{String(getEmail(professor))}</td>
+                        <td>{String(getDisciplina(professor))}</td>
 
-                      return (
-                        <tr key={String(id) || `${nome}-${email}`}>
-                          <td>{String(nome)}</td>
-                          <td>{String(email)}</td>
-                          <td>{String(disciplina)}</td>
+                        {isAdmin && (
+                          <td className="d-flex gap-2">
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => openEditProfessor(professor)}
+                            >
+                              Editar
+                            </button>
 
-                          {isAdmin && (
-                            <td className="d-flex gap-2">
-                              <button
-                                className="btn btn-sm btn-outline-primary"
-                                onClick={() => openEditProfessor(p)}
-                              >
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => openDelete("professor", p)}
-                              >
-                                Excluir
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => openDelete("professor", professor)}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
 
                     {professoresFiltrados.length === 0 && (
                       <tr>
@@ -497,7 +513,6 @@ export default function ListagemSection() {
         </>
       )}
 
-      {/* MODAL EDIÇÃO */}
       {editOpen && isAdmin && (
         <div className="modal-backdrop-custom" role="dialog" aria-modal="true">
           <div className="modal-card">
@@ -505,6 +520,7 @@ export default function ListagemSection() {
               <h5 className="m-0">
                 {editType === "aluno" ? "Editar Aluno" : "Editar Professor"}
               </h5>
+
               <button
                 className="btn btn-sm btn-outline-secondary"
                 onClick={closeEdit}
@@ -521,7 +537,9 @@ export default function ListagemSection() {
                   <input
                     className="form-control"
                     value={editFormAluno.nome}
-                    onChange={(e) => setEditFormAluno((p) => ({ ...p, nome: e.target.value }))}
+                    onChange={(e) =>
+                      setEditFormAluno((prev) => ({ ...prev, nome: e.target.value }))
+                    }
                     disabled={editLoading}
                   />
                 </div>
@@ -532,7 +550,9 @@ export default function ListagemSection() {
                     className="form-control"
                     type="email"
                     value={editFormAluno.email}
-                    onChange={(e) => setEditFormAluno((p) => ({ ...p, email: e.target.value }))}
+                    onChange={(e) =>
+                      setEditFormAluno((prev) => ({ ...prev, email: e.target.value }))
+                    }
                     disabled={editLoading}
                   />
                 </div>
@@ -542,7 +562,9 @@ export default function ListagemSection() {
                   <input
                     className="form-control"
                     value={editFormAluno.ra}
-                    onChange={(e) => setEditFormAluno((p) => ({ ...p, ra: e.target.value }))}
+                    onChange={(e) =>
+                      setEditFormAluno((prev) => ({ ...prev, ra: e.target.value }))
+                    }
                     disabled={editLoading}
                   />
                 </div>
@@ -552,7 +574,9 @@ export default function ListagemSection() {
                   <input
                     className="form-control"
                     value={editFormAluno.turma}
-                    onChange={(e) => setEditFormAluno((p) => ({ ...p, turma: e.target.value }))}
+                    onChange={(e) =>
+                      setEditFormAluno((prev) => ({ ...prev, turma: e.target.value }))
+                    }
                     disabled={editLoading}
                   />
                 </div>
@@ -565,7 +589,7 @@ export default function ListagemSection() {
                     className="form-control"
                     value={editFormProfessor.nome}
                     onChange={(e) =>
-                      setEditFormProfessor((p) => ({ ...p, nome: e.target.value }))
+                      setEditFormProfessor((prev) => ({ ...prev, nome: e.target.value }))
                     }
                     disabled={editLoading}
                   />
@@ -578,7 +602,7 @@ export default function ListagemSection() {
                     type="email"
                     value={editFormProfessor.email}
                     onChange={(e) =>
-                      setEditFormProfessor((p) => ({ ...p, email: e.target.value }))
+                      setEditFormProfessor((prev) => ({ ...prev, email: e.target.value }))
                     }
                     disabled={editLoading}
                   />
@@ -590,7 +614,10 @@ export default function ListagemSection() {
                     className="form-control"
                     value={editFormProfessor.disciplina}
                     onChange={(e) =>
-                      setEditFormProfessor((p) => ({ ...p, disciplina: e.target.value }))
+                      setEditFormProfessor((prev) => ({
+                        ...prev,
+                        disciplina: e.target.value,
+                      }))
                     }
                     disabled={editLoading}
                   />
@@ -607,12 +634,12 @@ export default function ListagemSection() {
         </div>
       )}
 
-      {/* MODAL EXCLUSÃO */}
       {delOpen && isAdmin && (
         <div className="modal-backdrop-custom" role="dialog" aria-modal="true">
           <div className="modal-card">
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h5 className="m-0">Confirmar exclusão</h5>
+
               <button
                 className="btn btn-sm btn-outline-secondary"
                 onClick={closeDelete}
@@ -625,10 +652,7 @@ export default function ListagemSection() {
             <div className="mb-3">
               Tem certeza que deseja excluir{" "}
               {delType === "aluno" ? "o aluno" : "o professor"}{" "}
-              <b>
-                {(delItem?.nome ?? delItem?.Nome ?? delItem?.name ?? "").toString()}
-              </b>
-              ?
+              <b>{String(getNome(delItem))}</b>?
               <div className="text-muted mt-1">Essa ação não pode ser desfeita.</div>
             </div>
 
@@ -640,6 +664,7 @@ export default function ListagemSection() {
               >
                 Cancelar
               </button>
+
               <button className="btn btn-danger" onClick={confirmDelete} disabled={delLoading}>
                 {delLoading ? "Excluindo..." : "Excluir"}
               </button>

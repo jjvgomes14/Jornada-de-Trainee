@@ -14,37 +14,48 @@ public class ProfessoresController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly EmailService _email;
+    private readonly ILogger<ProfessoresController> _logger;
 
-    public ProfessoresController(ApplicationDbContext db, EmailService email)
+    public ProfessoresController(
+        ApplicationDbContext db,
+        EmailService email,
+        ILogger<ProfessoresController> logger)
     {
         _db = db;
         _email = email;
-    }
-
-    // ======================= LISTAGEM BÁSICA =======================
-
-    // GET: /api/Professores
-    [HttpGet]
-    [Authorize]
-    public async Task<ActionResult<IEnumerable<Professor>>> GetAll()
-    {
-        var professores = await _db.Professores.AsNoTracking().ToListAsync();
-        return Ok(professores);
-    }
-
-    // GET: /api/Professores/{id}
-    [HttpGet("{id:int}")]
-    [Authorize]
-    public async Task<ActionResult<Professor>> GetById(int id)
-    {
-        var professor = await _db.Professores.FindAsync(id);
-        if (professor == null) return NotFound();
-        return Ok(professor);
+        _logger = logger;
     }
 
     // ======================= HELPERS PRIVADOS =======================
 
-    // Ex.: "Carlos Silva Souza" -> "csouza"
+    private int? ObterUserIdDoToken()
+    {
+        var userIdStr = User.FindFirstValue("userId");
+        if (int.TryParse(userIdStr, out var userId))
+            return userId;
+
+        return null;
+    }
+
+    private async Task<bool> UsuarioAtualPodeAcessarProfessorAsync(int professorId)
+    {
+        if (User.IsInRole(UserRoles.Administrador))
+            return true;
+
+        if (User.IsInRole(UserRoles.Professor))
+        {
+            var userId = ObterUserIdDoToken();
+            if (userId == null)
+                return false;
+
+            return await _db.Professores.AnyAsync(p =>
+                p.Id == professorId &&
+                p.UsuarioId == userId.Value);
+        }
+
+        return false;
+    }
+
     private static string GerarUsernameBasico(string nomeCompleto)
     {
         if (string.IsNullOrWhiteSpace(nomeCompleto))
@@ -84,6 +95,40 @@ public class ProfessoresController : ControllerBase
             .Substring(0, tamanho);
     }
 
+    // ======================= LISTAGEM BÁSICA =======================
+
+    // GET: /api/Professores
+    [HttpGet]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
+    public async Task<ActionResult<IEnumerable<Professor>>> GetAll()
+    {
+        var professores = await _db.Professores
+            .AsNoTracking()
+            .OrderBy(p => p.Nome)
+            .ToListAsync();
+
+        return Ok(professores);
+    }
+
+    // GET: /api/Professores/{id}
+    [HttpGet("{id:int}")]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
+    public async Task<ActionResult<Professor>> GetById(int id)
+    {
+        var podeAcessar = await UsuarioAtualPodeAcessarProfessorAsync(id);
+        if (!podeAcessar && !User.IsInRole(UserRoles.Administrador))
+            return Forbid();
+
+        var professor = await _db.Professores
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (professor == null)
+            return NotFound(new { message = "Professor não encontrado." });
+
+        return Ok(professor);
+    }
+
     // ======================= CRIAR PROFESSOR =======================
 
     // POST: /api/Professores
@@ -94,15 +139,26 @@ public class ProfessoresController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        // Salva o professor primeiro
-        _db.Professores.Add(professor);
-        await _db.SaveChangesAsync();
+        var emailNormalizado = professor.Email.Trim();
 
-        // Cria usuário vinculado + e-mail com credenciais
+        var emailJaExiste = await _db.Professores.AnyAsync(p => p.Email == emailNormalizado);
+        if (emailJaExiste)
+        {
+            return Conflict(new
+            {
+                message = "Já existe um professor com este e-mail."
+            });
+        }
+
+        string username;
+        string senhaPlano;
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+
         try
         {
-            var username = await GerarUsernameUnicoAsync(professor.Nome);
-            var senhaPlano = GerarSenhaAleatoria();
+            username = await GerarUsernameUnicoAsync(professor.Nome);
+            senhaPlano = GerarSenhaAleatoria();
 
             var usuario = new Usuario
             {
@@ -115,58 +171,103 @@ public class ProfessoresController : ControllerBase
             _db.Usuarios.Add(usuario);
             await _db.SaveChangesAsync();
 
-            // vincula o professor ao usuário criado
+            professor.Email = emailNormalizado;
             professor.UsuarioId = usuario.Id;
+
+            _db.Professores.Add(professor);
             await _db.SaveChangesAsync();
 
-            var assunto = "Acesso ao Portal EduConnect (Professor)";
-            var mensagem =
-                $"Olá {professor.Nome},\n\n" +
-                $"Você foi cadastrado como professor da disciplina \"{professor.Disciplina}\" no Portal EduConnect.\n\n" +
-                "Seus dados de acesso são:\n" +
-                $"Usuário: {username}\n" +
-                $"Senha provisória: {senhaPlano}\n\n" +
-                "No primeiro acesso você será solicitado a definir uma nova senha.\n\n" +
-                "Bons estudos com sua turma!\nPortal EduConnect";
+            await transaction.CommitAsync();
 
-            await _email.EnviarAsync(professor.Email, assunto, mensagem);
+            try
+            {
+                var assunto = "Acesso ao Portal EduConnect (Professor)";
+                var mensagem =
+                    $"Olá {professor.Nome},\n\n" +
+                    $"Você foi cadastrado como professor da disciplina \"{professor.Disciplina}\" no Portal EduConnect.\n\n" +
+                    "Seus dados de acesso são:\n" +
+                    $"Usuário: {username}\n" +
+                    $"Senha provisória: {senhaPlano}\n\n" +
+                    "No primeiro acesso você será solicitado a definir uma nova senha.\n\n" +
+                    "Atenciosamente,\nPortal EduConnect";
+
+                await _email.EnviarAsync(professor.Email, assunto, mensagem);
+            }
+            catch (Exception exEmail)
+            {
+                _logger.LogError(
+                    exEmail,
+                    "Professor criado, mas houve falha ao enviar e-mail. ProfessorId={ProfessorId}, Email={Email}",
+                    professor.Id,
+                    professor.Email);
+            }
+
+            return CreatedAtAction(nameof(GetById), new { id = professor.Id }, professor);
         }
-        catch
+        catch (Exception ex)
         {
-            // se der erro ao criar usuário ou enviar e-mail,
-            // o professor continua cadastrado; aqui você poderia logar o erro
-        }
+            await transaction.RollbackAsync();
 
-        return CreatedAtAction(nameof(GetById), new { id = professor.Id }, professor);
+            _logger.LogError(ex, "Erro ao criar professor e usuário vinculado.");
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocorreu um erro ao criar o professor."
+            });
+        }
     }
 
-    // ======================= ATUALIZAR / EXCLUIR =======================
+    // ======================= ATUALIZAR PROFESSOR =======================
 
     // PUT: /api/Professores/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Update(int id, [FromBody] Professor professor)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
         if (id != professor.Id)
-            return BadRequest(new { message = "Id do caminho e do corpo não conferem." });
-
-        _db.Entry(professor).State = EntityState.Modified;
-
-        try
         {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            var existe = await _db.Professores.AnyAsync(p => p.Id == id);
-            if (!existe)
-                return NotFound();
-
-            throw; // se for outro problema, deixa a exception subir
+            return BadRequest(new
+            {
+                message = "Id do caminho e do corpo não conferem."
+            });
         }
 
+        var professorExistente = await _db.Professores.FindAsync(id);
+        if (professorExistente == null)
+        {
+            return NotFound(new
+            {
+                message = "Professor não encontrado."
+            });
+        }
+
+        var emailNormalizado = professor.Email.Trim();
+
+        var emailJaExiste = await _db.Professores.AnyAsync(p =>
+            p.Email == emailNormalizado &&
+            p.Id != id);
+
+        if (emailJaExiste)
+        {
+            return Conflict(new
+            {
+                message = "Já existe outro professor com este e-mail."
+            });
+        }
+
+        professorExistente.Nome = professor.Nome;
+        professorExistente.Email = emailNormalizado;
+        professorExistente.Disciplina = professor.Disciplina;
+        professorExistente.DataNascimento = professor.DataNascimento;
+
+        await _db.SaveChangesAsync();
         return NoContent();
     }
+
+    // ======================= EXCLUIR PROFESSOR =======================
 
     // DELETE: /api/Professores/{id}
     [HttpDelete("{id:int}")]
@@ -174,15 +275,48 @@ public class ProfessoresController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var professor = await _db.Professores.FindAsync(id);
-        if (professor == null) return NotFound();
+        if (professor == null)
+        {
+            return NotFound(new
+            {
+                message = "Professor não encontrado."
+            });
+        }
 
-        _db.Professores.Remove(professor);
-        await _db.SaveChangesAsync();
+        using var transaction = await _db.Database.BeginTransactionAsync();
 
-        // opcional: você poderia remover o Usuario vinculado aqui,
-        // se não quiser deixar usuário "órfão"
+        try
+        {
+            Usuario? usuario = null;
 
-        return NoContent();
+            if (professor.UsuarioId.HasValue)
+            {
+                usuario = await _db.Usuarios.FindAsync(professor.UsuarioId.Value);
+            }
+
+            _db.Professores.Remove(professor);
+            await _db.SaveChangesAsync();
+
+            if (usuario != null)
+            {
+                _db.Usuarios.Remove(usuario);
+                await _db.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+
+            _logger.LogError(ex, "Erro ao excluir professor Id={ProfessorId}", id);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocorreu um erro ao excluir o professor."
+            });
+        }
     }
 
     // ======================= PROFESSOR LOGADO =======================
@@ -192,17 +326,27 @@ public class ProfessoresController : ControllerBase
     [Authorize(Roles = UserRoles.Professor)]
     public async Task<ActionResult<Professor>> GetMe()
     {
-        // userId vem da claim adicionada no JwtService
-        var userIdStr = User.FindFirstValue("userId");
-        if (string.IsNullOrWhiteSpace(userIdStr) || !int.TryParse(userIdStr, out var userId))
-            return Unauthorized(new { message = "Usuário não identificado no token." });
+        var userId = ObterUserIdDoToken();
+        if (userId == null)
+        {
+            return Unauthorized(new
+            {
+                message = "Usuário não identificado no token."
+            });
+        }
 
-        var prof = await _db.Professores
-            .FirstOrDefaultAsync(p => p.UsuarioId == userId);
+        var professor = await _db.Professores
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UsuarioId == userId.Value);
 
-        if (prof == null)
-            return NotFound(new { message = "Professor não encontrado para o usuário logado." });
+        if (professor == null)
+        {
+            return NotFound(new
+            {
+                message = "Professor não encontrado para o usuário logado."
+            });
+        }
 
-        return Ok(prof);
+        return Ok(professor);
     }
 }

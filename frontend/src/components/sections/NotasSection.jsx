@@ -9,10 +9,42 @@ function toBR(v) {
   return n.toFixed(2).replace(".", ",");
 }
 
+function getAlunoId(obj) {
+  return obj?.id ?? obj?.Id ?? "";
+}
+
+function getAlunoNome(obj) {
+  return obj?.nome ?? obj?.Nome ?? "";
+}
+
+function getAlunoRa(obj) {
+  return obj?.ra ?? obj?.RA ?? "";
+}
+
+function getAlunoTurma(obj) {
+  return obj?.turma ?? obj?.Turma ?? "";
+}
+
+function getDisciplina(obj) {
+  return obj?.disciplina ?? obj?.Disciplina ?? "";
+}
+
+function buildApiMessage(err, fallback) {
+  return (
+    err?.response?.data?.message ||
+    err?.response?.data ||
+    fallback
+  );
+}
+
 async function downloadBoletimPdf(alunoId) {
-  const res = await api.get(`/Notas/boletim/${alunoId}`, { responseType: "blob" });
+  const res = await api.get(`/Notas/boletim/${alunoId}`, {
+    responseType: "blob",
+  });
+
   const blob = new Blob([res.data], { type: "application/pdf" });
   const url = window.URL.createObjectURL(blob);
+
   window.open(url, "_blank", "noopener,noreferrer");
   setTimeout(() => window.URL.revokeObjectURL(url), 30_000);
 }
@@ -24,17 +56,15 @@ export default function NotasSection({ role }) {
   return <div className="text-muted">Perfil não reconhecido.</div>;
 }
 
-/* =========================================================
-   PROFESSOR (tabela intuitiva + filtro NÃO reseta)
-========================================================= */
 function NotasProfessor() {
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [alunos, setAlunos] = useState([]);
   const [notas, setNotas] = useState([]);
+  const [inputs, setInputs] = useState({});
+  const [savingCell, setSavingCell] = useState({});
 
-  // ✅ filtro de turma (persistido)
   const STORAGE_KEY_TURMA = "notas_professor_turmaSelecionada";
   const [turmaSelecionada, setTurmaSelecionada] = useState(() => {
     try {
@@ -44,16 +74,8 @@ function NotasProfessor() {
     }
   });
 
-  // ✅ evita "setar padrão" automaticamente em toda atualização
   const initializedRef = useRef(false);
 
-  // inputs por aluno/tipo (controlados)
-  const [inputs, setInputs] = useState({});
-
-  // loading por célula
-  const [savingCell, setSavingCell] = useState({});
-
-  // sempre que mudar a turma, salva no localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_TURMA, turmaSelecionada || "");
@@ -65,24 +87,27 @@ function NotasProfessor() {
   async function loadAll(showToast = false) {
     setLoading(true);
     try {
-      const [a, n] = await Promise.all([api.get("/Alunos"), api.get("/Notas/professor")]);
-      const alunosArr = Array.isArray(a.data) ? a.data : [];
-      const notasArr = Array.isArray(n.data) ? n.data : [];
+      const [resAlunos, resNotas] = await Promise.all([
+        api.get("/Alunos"),
+        api.get("/Notas/professor"),
+      ]);
+
+      const alunosArr = Array.isArray(resAlunos.data) ? resAlunos.data : [];
+      const notasArr = Array.isArray(resNotas.data) ? resNotas.data : [];
 
       setAlunos(alunosArr);
       setNotas(notasArr);
 
-      // ✅ Só define turma padrão UMA VEZ (na primeira carga) e SOMENTE se estiver vazia
       if (!initializedRef.current) {
         initializedRef.current = true;
 
         const turmasDisponiveis = Array.from(
           new Set(
             alunosArr
-              .map((x) => String(x.turma ?? x.Turma ?? "").trim())
-              .filter((t) => t)
+              .map((x) => String(getAlunoTurma(x)).trim())
+              .filter(Boolean)
           )
-        ).sort((x, y) => x.localeCompare(y));
+        ).sort((a, b) => a.localeCompare(b));
 
         if (!turmaSelecionada) {
           setTurmaSelecionada(turmasDisponiveis[0] || "");
@@ -91,8 +116,7 @@ function NotasProfessor() {
 
       if (showToast) toast.success("Notas atualizadas.");
     } catch (err) {
-      const status = err?.response?.status;
-      toast.error(`Falha ao carregar notas${status ? ` (HTTP ${status})` : ""}.`);
+      toast.error(String(buildApiMessage(err, "Falha ao carregar notas.")));
     } finally {
       setLoading(false);
     }
@@ -100,80 +124,85 @@ function NotasProfessor() {
 
   useEffect(() => {
     loadAll(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const turmas = useMemo(() => {
     const set = new Set();
-    for (const a of alunos) {
-      const t = a.turma ?? a.Turma ?? "";
-      const v = String(t).trim();
-      if (v) set.add(v);
+
+    for (const aluno of alunos) {
+      const turma = String(getAlunoTurma(aluno)).trim();
+      if (turma) set.add(turma);
     }
+
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [alunos]);
 
-  // disciplina atual do professor (se existir só uma)
   const disciplinaAtual = useMemo(() => {
     const set = new Set();
-    for (const n of notas) {
-      const d = n.disciplina ?? n.Disciplina;
-      const v = String(d ?? "").trim();
-      if (v) set.add(v);
+
+    for (const nota of notas) {
+      const disciplina = String(getDisciplina(nota)).trim();
+      if (disciplina) set.add(disciplina);
     }
+
     return set.size === 1 ? Array.from(set)[0] : "";
   }, [notas]);
 
   const alunosDaTurma = useMemo(() => {
     if (!turmaSelecionada) return alunos;
-    return alunos.filter((a) => {
-      const t = String(a.turma ?? a.Turma ?? "").trim();
-      return t === String(turmaSelecionada).trim();
+
+    return alunos.filter((aluno) => {
+      return String(getAlunoTurma(aluno)).trim() === String(turmaSelecionada).trim();
     });
   }, [alunos, turmaSelecionada]);
 
   const notasIndex = useMemo(() => {
     const idx = {};
-    for (const n of notas) {
-      const alunoId = String(n.alunoId ?? n.AlunoId ?? "");
-      const tipo = String(n.tipo ?? n.Tipo ?? "");
-      const disciplina = String(n.disciplina ?? n.Disciplina ?? "");
+
+    for (const nota of notas) {
+      const alunoId = String(nota?.alunoId ?? nota?.AlunoId ?? "");
+      const tipo = String(nota?.tipo ?? nota?.Tipo ?? "");
+      const disciplina = String(getDisciplina(nota)).trim();
 
       if (!alunoId || !tipo) continue;
       if (disciplinaAtual && disciplina !== disciplinaAtual) continue;
 
       if (!idx[alunoId]) idx[alunoId] = {};
-      idx[alunoId][tipo] = { valor: n.valor ?? n.Valor };
+      idx[alunoId][tipo] = {
+        valor: nota?.valor ?? nota?.Valor,
+      };
     }
+
     return idx;
   }, [notas, disciplinaAtual]);
 
-  // sincroniza inputs com notas existentes SEM sobrescrever digitação atual
   useEffect(() => {
     setInputs((prev) => {
       const next = { ...prev };
 
-      for (const a of alunosDaTurma) {
-        const aId = String(a.id ?? a.Id ?? "");
-        if (!aId) continue;
+      for (const aluno of alunosDaTurma) {
+        const alunoId = String(getAlunoId(aluno));
+        if (!alunoId) continue;
 
-        const base = next[aId] ? { ...next[aId] } : {};
-        const current = notasIndex[aId] || {};
+        const base = next[alunoId] ? { ...next[alunoId] } : {};
+        const atual = notasIndex[alunoId] || {};
 
         if (base.Atividade === undefined || base.Atividade === "") {
-          const v = current.Atividade?.valor;
+          const v = atual.Atividade?.valor;
           base.Atividade = v === null || v === undefined ? "" : String(v).replace(".", ",");
         }
+
         if (base.P1 === undefined || base.P1 === "") {
-          const v = current.P1?.valor;
+          const v = atual.P1?.valor;
           base.P1 = v === null || v === undefined ? "" : String(v).replace(".", ",");
         }
+
         if (base.P2 === undefined || base.P2 === "") {
-          const v = current.P2?.valor;
+          const v = atual.P2?.valor;
           base.P2 = v === null || v === undefined ? "" : String(v).replace(".", ",");
         }
 
-        next[aId] = base;
+        next[alunoId] = base;
       }
 
       return next;
@@ -196,49 +225,50 @@ function NotasProfessor() {
     return n;
   }
 
-  function calcMedia(aId) {
-    const aKey = String(aId);
-    const valAt = parseNota(inputs[aKey]?.Atividade ?? notasIndex[aKey]?.Atividade?.valor);
-    const valP1 = parseNota(inputs[aKey]?.P1 ?? notasIndex[aKey]?.P1?.valor);
-    const valP2 = parseNota(inputs[aKey]?.P2 ?? notasIndex[aKey]?.P2?.valor);
+  function calcMedia(alunoId) {
+    const key = String(alunoId);
 
-    if (valAt === null && valP1 === null && valP2 === null) return null;
-    const media = ((valAt ?? 0) + (valP1 ?? 0) + (valP2 ?? 0)) / 3;
-    return media;
+    const atividade = parseNota(inputs[key]?.Atividade ?? notasIndex[key]?.Atividade?.valor);
+    const p1 = parseNota(inputs[key]?.P1 ?? notasIndex[key]?.P1?.valor);
+    const p2 = parseNota(inputs[key]?.P2 ?? notasIndex[key]?.P2?.valor);
+
+    if (atividade === null && p1 === null && p2 === null) return null;
+
+    return ((atividade ?? 0) + (p1 ?? 0) + (p2 ?? 0)) / 3;
   }
 
   async function salvarNota(alunoId, tipo) {
-    const aIdNum = Number(alunoId);
-    if (!aIdNum) {
+    const alunoIdNum = Number(alunoId);
+
+    if (!alunoIdNum) {
       toast.error("Aluno inválido.");
       return;
     }
 
     const raw = inputs[String(alunoId)]?.[tipo] ?? "";
-    const v = Number(String(raw).replace(",", "."));
+    const valor = Number(String(raw).replace(",", "."));
 
-    if (Number.isNaN(v) || v < 0 || v > 10) {
+    if (Number.isNaN(valor) || valor < 0 || valor > 10) {
       toast.error("A nota deve estar entre 0 e 10.");
       return;
     }
 
-    const key = `${alunoId}-${tipo}`;
-    setSavingCell((p) => ({ ...p, [key]: true }));
+    const cellKey = `${alunoId}-${tipo}`;
+    setSavingCell((prev) => ({ ...prev, [cellKey]: true }));
 
     try {
-      await api.post("/Notas", { alunoId: aIdNum, tipo, valor: v });
-      toast.success("Nota salva!");
+      await api.post("/Notas", {
+        alunoId: alunoIdNum,
+        tipo,
+        valor,
+      });
 
-      // ✅ recarrega dados SEM mexer no filtro
+      toast.success("Nota salva.");
       await loadAll(false);
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao lançar/editar nota.";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao salvar nota.")));
     } finally {
-      setSavingCell((p) => ({ ...p, [key]: false }));
+      setSavingCell((prev) => ({ ...prev, [cellKey]: false }));
     }
   }
 
@@ -250,10 +280,11 @@ function NotasProfessor() {
           <div className="text-muted" style={{ fontSize: 13 }}>
             {disciplinaAtual ? (
               <>
-                {" "}
                 <b>Disciplina:</b> {disciplinaAtual}
               </>
-            ) : null}
+            ) : (
+              "Disciplina do professor será identificada automaticamente."
+            )}
           </div>
         </div>
 
@@ -267,9 +298,9 @@ function NotasProfessor() {
               disabled={loading}
             >
               <option value="">Todas</option>
-              {turmas.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {turmas.map((turma) => (
+                <option key={turma} value={turma}>
+                  {turma}
                 </option>
               ))}
             </select>
@@ -302,34 +333,40 @@ function NotasProfessor() {
             </thead>
 
             <tbody>
-              {alunosDaTurma.map((a) => {
-                const aId = String(a.id ?? a.Id ?? "");
-                const nome = String(a.nome ?? a.Nome ?? "");
+              {alunosDaTurma.map((aluno) => {
+                const alunoId = String(getAlunoId(aluno));
+                const nome = getAlunoNome(aluno);
+                const media = calcMedia(alunoId);
 
-                const media = calcMedia(aId);
-
-                const cellKeyAt = `${aId}-Atividade`;
-                const cellKeyP1 = `${aId}-P1`;
-                const cellKeyP2 = `${aId}-P2`;
+                const cellAtividade = `${alunoId}-Atividade`;
+                const cellP1 = `${alunoId}-P1`;
+                const cellP2 = `${alunoId}-P2`;
 
                 return (
-                  <tr key={aId || nome}>
-                    <td>{nome}</td>
+                  <tr key={alunoId || nome}>
+                    <td>
+                      <div>
+                        <b>{nome}</b>
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 12 }}>
+                        RA: {getAlunoRa(aluno)} · Turma: {getAlunoTurma(aluno)}
+                      </div>
+                    </td>
 
                     <td>
                       <div className="d-flex gap-2">
                         <input
                           className="form-control form-control-sm"
-                          value={inputs[aId]?.Atividade ?? ""}
-                          onChange={(e) => setInput(aId, "Atividade", e.target.value)}
+                          value={inputs[alunoId]?.Atividade ?? ""}
+                          onChange={(e) => setInput(alunoId, "Atividade", e.target.value)}
                           placeholder="0 a 10"
                         />
                         <button
                           className="btn btn-sm btn-outline-secondary"
-                          onClick={() => salvarNota(aId, "Atividade")}
-                          disabled={!!savingCell[cellKeyAt]}
+                          onClick={() => salvarNota(alunoId, "Atividade")}
+                          disabled={!!savingCell[cellAtividade]}
                         >
-                          {savingCell[cellKeyAt] ? "..." : "Salvar"}
+                          {savingCell[cellAtividade] ? "..." : "Salvar"}
                         </button>
                       </div>
                     </td>
@@ -338,16 +375,16 @@ function NotasProfessor() {
                       <div className="d-flex gap-2">
                         <input
                           className="form-control form-control-sm"
-                          value={inputs[aId]?.P1 ?? ""}
-                          onChange={(e) => setInput(aId, "P1", e.target.value)}
+                          value={inputs[alunoId]?.P1 ?? ""}
+                          onChange={(e) => setInput(alunoId, "P1", e.target.value)}
                           placeholder="0 a 10"
                         />
                         <button
                           className="btn btn-sm btn-outline-secondary"
-                          onClick={() => salvarNota(aId, "P1")}
-                          disabled={!!savingCell[cellKeyP1]}
+                          onClick={() => salvarNota(alunoId, "P1")}
+                          disabled={!!savingCell[cellP1]}
                         >
-                          {savingCell[cellKeyP1] ? "..." : "Salvar"}
+                          {savingCell[cellP1] ? "..." : "Salvar"}
                         </button>
                       </div>
                     </td>
@@ -356,16 +393,16 @@ function NotasProfessor() {
                       <div className="d-flex gap-2">
                         <input
                           className="form-control form-control-sm"
-                          value={inputs[aId]?.P2 ?? ""}
-                          onChange={(e) => setInput(aId, "P2", e.target.value)}
+                          value={inputs[alunoId]?.P2 ?? ""}
+                          onChange={(e) => setInput(alunoId, "P2", e.target.value)}
                           placeholder="0 a 10"
                         />
                         <button
                           className="btn btn-sm btn-outline-secondary"
-                          onClick={() => salvarNota(aId, "P2")}
-                          disabled={!!savingCell[cellKeyP2]}
+                          onClick={() => salvarNota(alunoId, "P2")}
+                          disabled={!!savingCell[cellP2]}
                         >
-                          {savingCell[cellKeyP2] ? "..." : "Salvar"}
+                          {savingCell[cellP2] ? "..." : "Salvar"}
                         </button>
                       </div>
                     </td>
@@ -392,9 +429,6 @@ function NotasProfessor() {
   );
 }
 
-/* =========================================================
-   ALUNO (mantido)
-========================================================= */
 function NotasAluno() {
   const toast = useToast();
 
@@ -405,21 +439,19 @@ function NotasAluno() {
 
   async function load(showToast = false) {
     setLoading(true);
+
     try {
       const me = await api.get("/Alunos/me");
       setAluno(me.data);
 
-      const alunoId = me.data?.id ?? me.data?.Id;
-      const det = await api.get(`/Notas/aluno-detalhes/${alunoId}`);
-      setDetalhes(Array.isArray(det.data) ? det.data : []);
+      const alunoId = getAlunoId(me.data);
+      const detalhesRes = await api.get(`/Notas/aluno-detalhes/${alunoId}`);
+
+      setDetalhes(Array.isArray(detalhesRes.data) ? detalhesRes.data : []);
 
       if (showToast) toast.success("Notas atualizadas.");
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao carregar suas notas.";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao carregar suas notas.")));
     } finally {
       setLoading(false);
     }
@@ -427,23 +459,17 @@ function NotasAluno() {
 
   useEffect(() => {
     load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function baixar() {
     if (!aluno) return;
-    const alunoId = aluno.id ?? aluno.Id;
 
     setDownloading(true);
     try {
-      await downloadBoletimPdf(alunoId);
+      await downloadBoletimPdf(getAlunoId(aluno));
       toast.success("Boletim aberto em nova aba.");
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao gerar/baixar o boletim.";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao gerar o boletim.")));
     } finally {
       setDownloading(false);
     }
@@ -452,7 +478,8 @@ function NotasAluno() {
   return (
     <div className="card p-3">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h4 className="m-0">Minhas Notas</h4>
+        <h4 className="m-0">Minhas notas</h4>
+
         <div className="d-flex gap-2">
           <button
             className="btn btn-sm btn-outline-secondary"
@@ -461,6 +488,7 @@ function NotasAluno() {
           >
             {loading ? "Atualizando..." : "Recarregar"}
           </button>
+
           <button
             className="btn btn-sm btn-primary"
             onClick={baixar}
@@ -477,8 +505,8 @@ function NotasAluno() {
         <>
           {aluno && (
             <div className="text-muted mb-2">
-              <b>{aluno.nome ?? aluno.Nome}</b> — RA: <b>{aluno.ra ?? aluno.RA}</b> — Turma:{" "}
-              <b>{aluno.turma ?? aluno.Turma}</b>
+              <b>{getAlunoNome(aluno)}</b> — RA: <b>{getAlunoRa(aluno)}</b> — Turma:{" "}
+              <b>{getAlunoTurma(aluno)}</b>
             </div>
           )}
 
@@ -494,14 +522,14 @@ function NotasAluno() {
                 </tr>
               </thead>
               <tbody>
-                {detalhes.map((d) => (
-                  <tr key={String(d.disciplina ?? d.Disciplina)}>
-                    <td>{String(d.disciplina ?? d.Disciplina)}</td>
-                    <td>{toBR(d.atividade ?? d.Atividade)}</td>
-                    <td>{toBR(d.p1 ?? d.P1)}</td>
-                    <td>{toBR(d.p2 ?? d.P2)}</td>
+                {detalhes.map((item) => (
+                  <tr key={String(item?.disciplina ?? item?.Disciplina)}>
+                    <td>{String(item?.disciplina ?? item?.Disciplina)}</td>
+                    <td>{toBR(item?.atividade ?? item?.Atividade)}</td>
+                    <td>{toBR(item?.p1 ?? item?.P1)}</td>
+                    <td>{toBR(item?.p2 ?? item?.P2)}</td>
                     <td>
-                      <b>{toBR(d.media ?? d.Media)}</b>
+                      <b>{toBR(item?.media ?? item?.Media)}</b>
                     </td>
                   </tr>
                 ))}
@@ -522,9 +550,6 @@ function NotasAluno() {
   );
 }
 
-/* =========================================================
-   ADMIN (mantido)
-========================================================= */
 function NotasAdmin() {
   const toast = useToast();
 
@@ -536,13 +561,14 @@ function NotasAdmin() {
 
   async function loadAlunos(showToast = false) {
     setLoading(true);
+
     try {
-      const a = await api.get("/Alunos");
-      setAlunos(Array.isArray(a.data) ? a.data : []);
+      const { data } = await api.get("/Alunos");
+      setAlunos(Array.isArray(data) ? data : []);
+
       if (showToast) toast.success("Lista de alunos atualizada.");
     } catch (err) {
-      const status = err?.response?.status;
-      toast.error(`Falha ao carregar alunos${status ? ` (HTTP ${status})` : ""}.`);
+      toast.error(String(buildApiMessage(err, "Falha ao carregar alunos.")));
     } finally {
       setLoading(false);
     }
@@ -550,37 +576,31 @@ function NotasAdmin() {
 
   useEffect(() => {
     loadAlunos(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function carregarDetalhes(idStr) {
+  async function carregarDetalhes(id) {
     setDetalhes([]);
-    if (!idStr) return;
+
+    if (!id) return;
+
     try {
-      const det = await api.get(`/Notas/aluno-detalhes/${idStr}`);
-      setDetalhes(Array.isArray(det.data) ? det.data : []);
+      const { data } = await api.get(`/Notas/aluno-detalhes/${id}`);
+      setDetalhes(Array.isArray(data) ? data : []);
       toast.success("Notas do aluno carregadas.");
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao carregar notas do aluno.";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao carregar notas do aluno.")));
     }
   }
 
   async function baixar() {
     if (!alunoId) return;
+
     setDownloading(true);
     try {
       await downloadBoletimPdf(alunoId);
       toast.success("Boletim aberto em nova aba.");
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao gerar/baixar o boletim.";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao gerar o boletim.")));
     } finally {
       setDownloading(false);
     }
@@ -590,6 +610,7 @@ function NotasAdmin() {
     <div className="card p-3">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <h4 className="m-0">Notas (Admin)</h4>
+
         <button
           className="btn btn-sm btn-outline-secondary"
           onClick={() => loadAlunos(true)}
@@ -610,23 +631,17 @@ function NotasAdmin() {
                 className="form-select"
                 value={alunoId}
                 onChange={(e) => {
-                  const v = e.target.value;
-                  setAlunoId(v);
-                  carregarDetalhes(v);
+                  const value = e.target.value;
+                  setAlunoId(value);
+                  carregarDetalhes(value);
                 }}
               >
                 <option value="">Selecione...</option>
-                {alunos.map((a) => {
-                  const id = a.id ?? a.Id;
-                  const nome = a.nome ?? a.Nome ?? "";
-                  const turma = a.turma ?? a.Turma ?? "";
-                  const ra = a.ra ?? a.RA ?? "";
-                  return (
-                    <option key={String(id)} value={String(id)}>
-                      {nome} — RA: {ra} — Turma: {turma}
-                    </option>
-                  );
-                })}
+                {alunos.map((aluno) => (
+                  <option key={String(getAlunoId(aluno))} value={String(getAlunoId(aluno))}>
+                    {getAlunoNome(aluno)} — RA: {getAlunoRa(aluno)} — Turma: {getAlunoTurma(aluno)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -653,14 +668,14 @@ function NotasAdmin() {
                 </tr>
               </thead>
               <tbody>
-                {detalhes.map((d) => (
-                  <tr key={String(d.disciplina ?? d.Disciplina)}>
-                    <td>{String(d.disciplina ?? d.Disciplina)}</td>
-                    <td>{toBR(d.atividade ?? d.Atividade)}</td>
-                    <td>{toBR(d.p1 ?? d.P1)}</td>
-                    <td>{toBR(d.p2 ?? d.P2)}</td>
+                {detalhes.map((item) => (
+                  <tr key={String(item?.disciplina ?? item?.Disciplina)}>
+                    <td>{String(item?.disciplina ?? item?.Disciplina)}</td>
+                    <td>{toBR(item?.atividade ?? item?.Atividade)}</td>
+                    <td>{toBR(item?.p1 ?? item?.P1)}</td>
+                    <td>{toBR(item?.p2 ?? item?.P2)}</td>
                     <td>
-                      <b>{toBR(d.media ?? d.Media)}</b>
+                      <b>{toBR(item?.media ?? item?.Media)}</b>
                     </td>
                   </tr>
                 ))}

@@ -10,7 +10,6 @@ public class ApplicationDbContext : DbContext
     {
     }
 
-    // ========== ENTIDADES ==========
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Aluno> Alunos => Set<Aluno>();
     public DbSet<Professor> Professores => Set<Professor>();
@@ -20,8 +19,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<SolicitacaoMatricula> SolicitacoesMatricula => Set<SolicitacaoMatricula>();
     public DbSet<NotificacaoEvento> NotificacoesEventos => Set<NotificacaoEvento>();
 
-
-    // ========== CONFIGURAÇÃO DO MODELO ==========
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -42,9 +39,26 @@ public class ApplicationDbContext : DbContext
             .IsUnique()
             .HasDatabaseName("IX_Aluno_RA");
 
+        modelBuilder.Entity<Aluno>()
+            .HasIndex(a => a.Email)
+            .HasDatabaseName("IX_Aluno_Email");
+
+        modelBuilder.Entity<Aluno>()
+            .HasIndex(a => a.CPF)
+            .HasDatabaseName("IX_Aluno_CPF");
+
+        modelBuilder.Entity<Aluno>()
+            .HasIndex(a => a.UsuarioId)
+            .HasDatabaseName("IX_Aluno_UsuarioId");
+
+        modelBuilder.Entity<Aluno>()
+            .HasOne(a => a.Usuario)
+            .WithMany()
+            .HasForeignKey(a => a.UsuarioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // ------------------------------
         // PROFESSORES
-        // Vincula opcionalmente o usuário
         // ------------------------------
         modelBuilder.Entity<Professor>()
             .HasOne<Usuario>()
@@ -54,10 +68,6 @@ public class ApplicationDbContext : DbContext
 
         // ------------------------------
         // NOTAS
-        // Cada nota pertence a:
-        // - um aluno
-        // - um professor
-        // - uma disciplina
         // ------------------------------
         modelBuilder.Entity<Nota>()
             .HasOne(n => n.Aluno)
@@ -79,7 +89,6 @@ public class ApplicationDbContext : DbContext
 
         // ------------------------------
         // EVENTOS DO CALENDÁRIO
-        // ProfessorId é opcional
         // ------------------------------
         modelBuilder.Entity<EventoCalendario>()
             .HasOne<Professor>()
@@ -92,6 +101,6 @@ public class ApplicationDbContext : DbContext
         // ------------------------------
         modelBuilder.Entity<SolicitacaoMatricula>()
             .Property(s => s.Status)
-            .HasConversion<string>(); // salva "Pendente", "Aprovada", "Rejeitada"
+            .HasConversion<string>();
     }
 }

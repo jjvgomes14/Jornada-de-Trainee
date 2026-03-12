@@ -2,6 +2,41 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { useToast } from "../../ui/ToastContext";
 
+function buildApiMessage(err, fallback) {
+  const data = err?.response?.data;
+
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  if (typeof data === "string" && data.trim()) return data;
+
+  if (data && typeof data === "object") {
+    const errorsObj = data.errors && typeof data.errors === "object" ? data.errors : data;
+
+    const msgs = [];
+    for (const key of Object.keys(errorsObj)) {
+      const val = errorsObj[key];
+
+      if (Array.isArray(val)) {
+        for (const msg of val) {
+          if (typeof msg === "string" && msg.trim()) msgs.push(msg.trim());
+        }
+      } else if (typeof val === "string" && val.trim()) {
+        msgs.push(val.trim());
+      }
+    }
+
+    if (msgs.length) return msgs.join(" | ");
+  }
+
+  return fallback;
+}
+
+function pick(obj, keys, fallback = "") {
+  for (const k of keys) {
+    if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+  }
+  return fallback;
+}
+
 export default function CadastroSection() {
   const [tab, setTab] = useState("matriculas");
 
@@ -12,18 +47,14 @@ export default function CadastroSection() {
 
         <div className="d-flex flex-wrap gap-2">
           <button
-            className={`btn btn-sm ${
-              tab === "matriculas" ? "btn-primary" : "btn-outline-primary"
-            }`}
+            className={`btn btn-sm ${tab === "matriculas" ? "btn-primary" : "btn-outline-primary"}`}
             onClick={() => setTab("matriculas")}
           >
             Matrículas pendentes
           </button>
 
           <button
-            className={`btn btn-sm ${
-              tab === "professor" ? "btn-primary" : "btn-outline-primary"
-            }`}
+            className={`btn btn-sm ${tab === "professor" ? "btn-primary" : "btn-outline-primary"}`}
             onClick={() => setTab("professor")}
           >
             Cadastrar professor
@@ -40,7 +71,7 @@ const CURSOS = [
   "Engenharia Elétrica",
   "Engenharia Mecânica",
   "Engenharia Civil",
-  "Engenharia Quimica",
+  "Engenharia Química",
   "Engenharia de Automação e Controle",
   "Engenharia de Produção",
   "Engenharia de Software",
@@ -69,13 +100,14 @@ function MatriculasPendentes() {
 
   async function load(showToast = false) {
     setLoading(true);
+
     try {
       const { data } = await api.get("/Matriculas/pendentes");
       setPendentes(Array.isArray(data) ? data : []);
+
       if (showToast) toast.success("Pendentes atualizados.");
     } catch (err) {
-      const status = err?.response?.status;
-      toast.error(`Falha ao carregar pendentes${status ? ` (HTTP ${status})` : ""}.`);
+      toast.error(buildApiMessage(err, "Falha ao carregar pendentes."));
     } finally {
       setLoading(false);
     }
@@ -83,7 +115,6 @@ function MatriculasPendentes() {
 
   useEffect(() => {
     load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openAction(item, actionType) {
@@ -94,6 +125,7 @@ function MatriculasPendentes() {
 
   function closeAction() {
     if (sending) return;
+
     setSelected(null);
     setAcao(null);
     setForm({ ra: "", turma: "", observacao: "" });
@@ -109,6 +141,7 @@ function MatriculasPendentes() {
     if (!selected || !acao) return;
 
     setSending(true);
+
     try {
       await api.post("/Matriculas/responder", {
         id: selected.id ?? selected.Id,
@@ -122,11 +155,7 @@ function MatriculasPendentes() {
       closeAction();
       await load(false);
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao responder matrícula.";
-      toast.error(String(apiMsg));
+      toast.error(buildApiMessage(err, "Falha ao responder matrícula."));
     } finally {
       setSending(false);
     }
@@ -155,7 +184,6 @@ function MatriculasPendentes() {
           <table className="table table-sm table-striped align-middle">
             <thead>
               <tr>
-                {/* ID REMOVIDO */}
                 <th>Nome</th>
                 <th>E-mail</th>
                 <th>Nascimento</th>
@@ -163,18 +191,17 @@ function MatriculasPendentes() {
                 <th>Ações</th>
               </tr>
             </thead>
+
             <tbody>
               {pendentes.map((s) => {
                 const id = s.id ?? s.Id;
-                const nome = s.nome ?? s.Nome;
-                const email = s.email ?? s.Email;
-
-                const dn = s.dataNascimento || s.DataNascimento;
-                const dc = s.dataCriacao || s.DataCriacao || s.CriadoEm;
+                const nome = pick(s, ["nome", "Nome"]);
+                const email = pick(s, ["email", "Email"]);
+                const dn = pick(s, ["dataNascimento", "DataNascimento"]);
+                const dc = pick(s, ["dataCriacao", "DataCriacao", "criadoEm", "CriadoEm"]);
 
                 return (
                   <tr key={String(id)}>
-                    {/* ID NÃO EXIBIDO */}
                     <td>{String(nome)}</td>
                     <td>{String(email)}</td>
                     <td>{dn ? new Date(dn).toLocaleDateString() : "-"}</td>
@@ -186,6 +213,7 @@ function MatriculasPendentes() {
                       >
                         Aprovar
                       </button>
+
                       <button
                         className="btn btn-sm btn-outline-danger"
                         onClick={() => openAction(s, "rejeitar")}
@@ -216,6 +244,7 @@ function MatriculasPendentes() {
               <h5 className="m-0">
                 {acao === "aprovar" ? "Aprovar matrícula" : "Rejeitar matrícula"}
               </h5>
+
               <button
                 className="btn btn-sm btn-outline-secondary"
                 onClick={closeAction}
@@ -227,16 +256,18 @@ function MatriculasPendentes() {
 
             <div className="mb-2">
               <div>
-                <b>Aluno:</b> {selected.nome} ({selected.email})
+                <b>Aluno:</b> {pick(selected, ["nome", "Nome"])} ({pick(selected, ["email", "Email"])})
               </div>
+
               <div className="text-muted">
-                <b>CPF:</b> {selected.cpf} | <b>RG:</b> {selected.rg} |{" "}
-                <b>Celular:</b> {selected.celular}
+                <b>CPF:</b> {pick(selected, ["cpf", "CPF"])} | <b>RG:</b> {pick(selected, ["rg", "RG"])} |{" "}
+                <b>Celular:</b> {pick(selected, ["celular", "Celular"])}
               </div>
+
               <div className="text-muted">
-                <b>Endereço:</b> {selected.rua}, {selected.numeroCasa} -{" "}
-                {selected.bairro} - {selected.cidade}/{selected.estado} - CEP{" "}
-                {selected.cep}
+                <b>Endereço:</b> {pick(selected, ["rua", "Rua"])}, {pick(selected, ["numeroCasa", "NumeroCasa"])} -{" "}
+                {pick(selected, ["bairro", "Bairro"])} - {pick(selected, ["cidade", "Cidade"])}/
+                {pick(selected, ["estado", "Estado"])} - CEP {pick(selected, ["cep", "CEP"])}
               </div>
             </div>
 
@@ -247,21 +278,17 @@ function MatriculasPendentes() {
                   <input
                     className="form-control"
                     value={form.ra}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, ra: e.target.value }))
-                    }
+                    onChange={(e) => setForm((p) => ({ ...p, ra: e.target.value }))}
                     disabled={sending}
                   />
                 </div>
 
                 <div className="col-12 col-md-6">
-                  <label className="form-label">Turma (obrigatório)</label>
+                  <label className="form-label">Turma / Curso (obrigatório)</label>
                   <select
                     className="form-select"
                     value={form.turma}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, turma: e.target.value }))
-                    }
+                    onChange={(e) => setForm((p) => ({ ...p, turma: e.target.value }))}
                     disabled={sending}
                   >
                     <option value="">Selecione um curso</option>
@@ -281,18 +308,14 @@ function MatriculasPendentes() {
                 className="form-control"
                 rows={3}
                 value={form.observacao}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, observacao: e.target.value }))
-                }
+                onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))}
                 disabled={sending}
               />
             </div>
 
             <div className="d-grid">
               <button
-                className={`btn ${
-                  acao === "aprovar" ? "btn-success" : "btn-danger"
-                }`}
+                className={`btn ${acao === "aprovar" ? "btn-success" : "btn-danger"}`}
                 onClick={submit}
                 disabled={!canSubmit}
               >
@@ -317,33 +340,33 @@ function CadastroProfessor() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [disciplina, setDisciplina] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
 
   async function submit(e) {
     e.preventDefault();
 
-    if (!nome.trim() || !email.trim() || !disciplina.trim()) {
-      toast.error("Preencha nome, e-mail e disciplina.");
+    if (!nome.trim() || !email.trim() || !disciplina.trim() || !dataNascimento) {
+      toast.error("Preencha nome, e-mail, disciplina e data de nascimento.");
       return;
     }
 
     setLoading(true);
+
     try {
       await api.post("/Professores", {
         nome: nome.trim(),
         email: email.trim(),
         disciplina: disciplina.trim(),
+        dataNascimento,
       });
 
       toast.success("Professor cadastrado!");
       setNome("");
       setEmail("");
       setDisciplina("");
+      setDataNascimento("");
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao cadastrar professor.";
-      toast.error(String(apiMsg));
+      toast.error(buildApiMessage(err, "Falha ao cadastrar professor."));
     } finally {
       setLoading(false);
     }
@@ -372,11 +395,21 @@ function CadastroProfessor() {
             disabled={loading}
           />
 
+          <label className="form-label">Data de nascimento</label>
+          <input
+            className="form-control mb-2"
+            type="date"
+            value={dataNascimento}
+            onChange={(e) => setDataNascimento(e.target.value)}
+            disabled={loading}
+          />
+
           <label className="form-label">Disciplina</label>
           <select
             className="form-select mb-3"
             value={disciplina}
             onChange={(e) => setDisciplina(e.target.value)}
+            disabled={loading}
           >
             <option value="">Selecione a disciplina</option>
             {DISCIPLINAS.map((d) => (

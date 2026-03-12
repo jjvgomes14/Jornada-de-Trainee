@@ -5,7 +5,6 @@ import { useToast } from "../ui/ToastContext";
 export default function ChangePasswordModal({ open, username, onSuccess }) {
   const toast = useToast();
 
-  const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
   const [loading, setLoading] = useState(false);
@@ -13,14 +12,16 @@ export default function ChangePasswordModal({ open, username, onSuccess }) {
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (!senhaAtual || !novaSenha || !confirmacao) {
+    if (!novaSenha || !confirmacao) {
       toast.error("Preencha todos os campos.");
       return;
     }
+
     if (novaSenha !== confirmacao) {
       toast.error("A confirmação não confere com a nova senha.");
       return;
     }
+
     if (novaSenha.length < 6) {
       toast.error("A nova senha deve ter pelo menos 6 caracteres.");
       return;
@@ -29,18 +30,19 @@ export default function ChangePasswordModal({ open, username, onSuccess }) {
     setLoading(true);
     try {
       await api.post("/Auth/alterar-senha-primeiro-acesso", {
-        username,
-        senhaAtual,
         novaSenha,
       });
 
       toast.success("Senha alterada com sucesso!");
+      setNovaSenha("");
+      setConfirmacao("");
       onSuccess?.();
     } catch (err) {
       const apiMsg =
         err?.response?.data?.message ||
         err?.response?.data ||
-        "Erro ao alterar senha. Verifique a senha atual e tente novamente.";
+        "Erro ao alterar senha.";
+
       toast.error(String(apiMsg));
     } finally {
       setLoading(false);
@@ -53,22 +55,12 @@ export default function ChangePasswordModal({ open, username, onSuccess }) {
     <div className="modal-backdrop-custom" role="dialog" aria-modal="true">
       <div className="modal-card">
         <h5 className="mb-2">Troca de senha obrigatória</h5>
+
         <p className="text-muted">
           Este é seu primeiro acesso. Você precisa trocar a senha para continuar.
         </p>
 
         <form onSubmit={handleSubmit} className="row g-2">
-          <div className="col-12">
-            <label className="form-label">Senha atual</label>
-            <input
-              type="password"
-              className="form-control"
-              value={senhaAtual}
-              onChange={(e) => setSenhaAtual(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
           <div className="col-12">
             <label className="form-label">Nova senha</label>
             <input

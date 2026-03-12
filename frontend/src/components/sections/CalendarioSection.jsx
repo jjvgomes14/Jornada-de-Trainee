@@ -20,6 +20,14 @@ function addDays(date, days) {
   return d;
 }
 
+function buildApiMessage(err, fallback) {
+  return (
+    err?.response?.data?.message ||
+    err?.response?.data ||
+    fallback
+  );
+}
+
 export default function CalendarioSection({ role }) {
   const toast = useToast();
   const canEdit = role === "admin" || role === "professor";
@@ -41,13 +49,14 @@ export default function CalendarioSection({ role }) {
 
   async function loadEventos(showToast = false) {
     setLoading(true);
+
     try {
       const { data } = await api.get("/Eventos");
       setEventosApi(Array.isArray(data) ? data : []);
+
       if (showToast) toast.success("Eventos atualizados.");
     } catch (err) {
-      const status = err?.response?.status;
-      toast.error(`Falha ao carregar eventos${status ? ` (HTTP ${status})` : ""}.`);
+      toast.error(String(buildApiMessage(err, "Falha ao carregar eventos.")));
     } finally {
       setLoading(false);
     }
@@ -55,26 +64,24 @@ export default function CalendarioSection({ role }) {
 
   useEffect(() => {
     loadEventos(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const calendarEvents = useMemo(() => {
-    return eventosApi.map((e) => {
-      const id = e.id ?? e.Id;
-      const titulo = e.titulo ?? e.Titulo ?? "";
-      const inicio = e.dataInicio ?? e.DataInicio;
-      const fim = e.dataFim ?? e.DataFim;
-
-      const start = toISODateOnly(inicio);
-      const end = fim ? toISODateOnly(addDays(fim, 1)) : undefined;
+    return eventosApi.map((evento) => {
+      const id = evento?.id ?? evento?.Id;
+      const titulo = evento?.titulo ?? evento?.Titulo ?? "";
+      const inicio = evento?.dataInicio ?? evento?.DataInicio;
+      const fim = evento?.dataFim ?? evento?.DataFim;
 
       return {
         id: String(id),
         title: String(titulo),
-        start,
-        end,
+        start: toISODateOnly(inicio),
+        end: fim ? toISODateOnly(addDays(fim, 1)) : undefined,
         allDay: true,
-        extendedProps: { raw: e },
+        extendedProps: {
+          raw: evento,
+        },
       };
     });
   }, [eventosApi]);
@@ -93,15 +100,15 @@ export default function CalendarioSection({ role }) {
   function openEdit(eventClickInfo) {
     const ev = eventClickInfo.event;
     const raw = ev.extendedProps?.raw || {};
-    const id = raw.id ?? raw.Id ?? ev.id;
 
-    const dataInicio = raw.dataInicio ?? raw.DataInicio ?? ev.startStr;
-    const dataFim = raw.dataFim ?? raw.DataFim ?? null;
+    const id = raw?.id ?? raw?.Id ?? ev.id;
+    const dataInicio = raw?.dataInicio ?? raw?.DataInicio ?? ev.startStr;
+    const dataFim = raw?.dataFim ?? raw?.DataFim ?? null;
 
     setMode("edit");
     setSelectedId(String(id));
     setForm({
-      titulo: raw.titulo ?? raw.Titulo ?? ev.title ?? "",
+      titulo: raw?.titulo ?? raw?.Titulo ?? ev.title ?? "",
       dataInicio: toISODateOnly(dataInicio),
       dataFim: dataFim ? toISODateOnly(dataFim) : "",
     });
@@ -110,34 +117,45 @@ export default function CalendarioSection({ role }) {
 
   function closeModal() {
     if (saving) return;
+
     setModalOpen(false);
     setSelectedId(null);
-    setForm({ titulo: "", dataInicio: "", dataFim: "" });
+    setForm({
+      titulo: "",
+      dataInicio: "",
+      dataFim: "",
+    });
   }
 
   function validate() {
     if (!form.titulo.trim()) return "Informe o título.";
     if (!form.dataInicio) return "Informe a data de início.";
+
     if (form.dataFim) {
       const ini = new Date(form.dataInicio);
       const fim = new Date(form.dataFim);
+
       if (fim < ini) return "Data fim não pode ser menor que a data início.";
     }
+
     return "";
   }
 
   async function save() {
     const msg = validate();
+
     if (msg) {
       toast.error(msg);
       return;
     }
+
     if (!canEdit) {
       toast.error("Sem permissão para alterar eventos.");
       return;
     }
 
     setSaving(true);
+
     try {
       const payload = {
         titulo: form.titulo.trim(),
@@ -147,20 +165,16 @@ export default function CalendarioSection({ role }) {
 
       if (mode === "create") {
         await api.post("/Eventos", payload);
-        toast.success("Evento criado!");
+        toast.success("Evento criado.");
       } else {
         await api.put(`/Eventos/${selectedId}`, payload);
-        toast.success("Evento atualizado!");
+        toast.success("Evento atualizado.");
       }
 
       closeModal();
       await loadEventos(false);
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao salvar evento (verifique permissões).";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao salvar evento.")));
     } finally {
       setSaving(false);
     }
@@ -168,23 +182,24 @@ export default function CalendarioSection({ role }) {
 
   async function remove() {
     if (!selectedId) return;
+
     if (!canEdit) {
       toast.error("Sem permissão para excluir eventos.");
       return;
     }
 
+    const confirmar = window.confirm("Deseja realmente excluir este evento?");
+    if (!confirmar) return;
+
     setSaving(true);
+
     try {
       await api.delete(`/Eventos/${selectedId}`);
-      toast.success("Evento excluído!");
+      toast.success("Evento excluído.");
       closeModal();
       await loadEventos(false);
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Falha ao excluir evento (verifique permissões).";
-      toast.error(String(apiMsg));
+      toast.error(String(buildApiMessage(err, "Falha ao excluir evento.")));
     } finally {
       setSaving(false);
     }
@@ -205,13 +220,17 @@ export default function CalendarioSection({ role }) {
           </button>
 
           {canEdit && (
-            <button className="btn btn-sm btn-primary" onClick={() => openCreate(new Date())} disabled={loading}>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => openCreate(new Date())}
+              disabled={loading}
+            >
               Novo evento
             </button>
           )}
         </div>
       </div>
-      
+
       {loading ? (
         <div>Carregando...</div>
       ) : (
@@ -238,7 +257,12 @@ export default function CalendarioSection({ role }) {
           <div className="modal-card">
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h5 className="m-0">{mode === "create" ? "Novo evento" : "Editar evento"}</h5>
-              <button className="btn btn-sm btn-outline-secondary" onClick={closeModal} disabled={saving}>
+
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={closeModal}
+                disabled={saving}
+              >
                 Fechar
               </button>
             </div>
@@ -249,7 +273,7 @@ export default function CalendarioSection({ role }) {
                 <input
                   className="form-control"
                   value={form.titulo}
-                  onChange={(e) => setForm((p) => ({ ...p, titulo: e.target.value }))}
+                  onChange={(e) => setForm((prev) => ({ ...prev, titulo: e.target.value }))}
                   disabled={!canEdit || saving}
                 />
               </div>
@@ -260,39 +284,37 @@ export default function CalendarioSection({ role }) {
                   type="date"
                   className="form-control"
                   value={form.dataInicio}
-                  onChange={(e) => setForm((p) => ({ ...p, dataInicio: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, dataInicio: e.target.value }))
+                  }
                   disabled={!canEdit || saving}
                 />
               </div>
 
               <div className="col-6">
-                <label className="form-label">Data fim (opcional)</label>
+                <label className="form-label">Data fim</label>
                 <input
                   type="date"
                   className="form-control"
                   value={form.dataFim}
-                  onChange={(e) => setForm((p) => ({ ...p, dataFim: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, dataFim: e.target.value }))
+                  }
                   disabled={!canEdit || saving}
                 />
               </div>
             </div>
 
-            <div className="d-flex flex-wrap gap-2 mt-3">
-              {canEdit ? (
-                <>
-                  <button className="btn btn-primary" onClick={save} disabled={saving}>
-                    {saving ? "Salvando..." : "Salvar"}
-                  </button>
-
-                  {mode === "edit" && (
-                    <button className="btn btn-outline-danger" onClick={remove} disabled={saving}>
-                      {saving ? "Excluindo..." : "Excluir"}
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div className="text-muted">Visualização apenas.</div>
+            <div className="d-flex gap-2 justify-content-end mt-3">
+              {mode === "edit" && canEdit && (
+                <button className="btn btn-outline-danger" onClick={remove} disabled={saving}>
+                  {saving ? "Processando..." : "Excluir"}
+                </button>
               )}
+
+              <button className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>
+                {saving ? "Salvando..." : mode === "create" ? "Criar evento" : "Salvar alterações"}
+              </button>
             </div>
           </div>
         </div>

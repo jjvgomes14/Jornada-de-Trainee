@@ -15,38 +15,34 @@ public class AlunosController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly EmailService _email;
+    private readonly ILogger<AlunosController> _logger;
 
-    public AlunosController(ApplicationDbContext db, EmailService email)
+    public AlunosController(
+        ApplicationDbContext db,
+        EmailService email,
+        ILogger<AlunosController> logger)
     {
         _db = db;
         _email = email;
-    }
-
-    // ======================= LISTAGEM BÁSICA =======================
-
-    // GET: /api/Alunos
-    [HttpGet]
-    [Authorize]
-    public async Task<ActionResult<IEnumerable<Aluno>>> GetAll()
-    {
-        var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
-        return Ok(alunos);
-    }
-
-    // GET: /api/Alunos/{id}
-    [HttpGet("{id:int}")]
-    [Authorize]
-    public async Task<ActionResult<Aluno>> GetById(int id)
-    {
-        var aluno = await _db.Alunos.FindAsync(id);
-        if (aluno == null) return NotFound();
-
-        return Ok(aluno);
+        _logger = logger;
     }
 
     // ======================= HELPERS PRIVADOS =======================
 
-    // Ex.: "Maria Silva Souza" -> "msouza"
+    private int? ObterUserIdDoToken()
+    {
+        var userIdStr = User.FindFirstValue("userId");
+        if (int.TryParse(userIdStr, out var userId))
+            return userId;
+
+        return null;
+    }
+
+    private string? ObterRoleDoToken()
+    {
+        return User.FindFirstValue(ClaimTypes.Role);
+    }
+
     private static string GerarUsernameBasico(string nomeCompleto)
     {
         if (string.IsNullOrWhiteSpace(nomeCompleto))
@@ -81,10 +77,75 @@ public class AlunosController : ControllerBase
 
     private static string GerarSenhaAleatoria(int tamanho = 10)
     {
-        // Pega só os primeiros N caracteres de um GUID sem traços
         return Guid.NewGuid()
             .ToString("N")
             .Substring(0, tamanho);
+    }
+
+    private async Task<Aluno?> ObterAlunoDoUsuarioLogadoAsync()
+    {
+        var userId = ObterUserIdDoToken();
+        if (userId == null)
+            return null;
+
+        return await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UsuarioId == userId.Value);
+    }
+
+    private async Task<bool> UsuarioAtualPodeAcessarAlunoAsync(int alunoId)
+    {
+        var role = ObterRoleDoToken();
+
+        if (role == UserRoles.Administrador || role == UserRoles.Professor)
+            return true;
+
+        if (role == UserRoles.Aluno)
+        {
+            var userId = ObterUserIdDoToken();
+            if (userId == null)
+                return false;
+
+            return await _db.Alunos.AnyAsync(a =>
+                a.Id == alunoId &&
+                a.UsuarioId == userId.Value);
+        }
+
+        return false;
+    }
+
+    // ======================= LISTAGEM BÁSICA =======================
+
+    // GET: /api/Alunos
+    [HttpGet]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
+    public async Task<ActionResult<IEnumerable<Aluno>>> GetAll()
+    {
+        var alunos = await _db.Alunos
+            .AsNoTracking()
+            .OrderBy(a => a.Nome)
+            .ToListAsync();
+
+        return Ok(alunos);
+    }
+
+    // GET: /api/Alunos/{id}
+    [HttpGet("{id:int}")]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor},{UserRoles.Aluno}")]
+    public async Task<ActionResult<Aluno>> GetById(int id)
+    {
+        var podeAcessar = await UsuarioAtualPodeAcessarAlunoAsync(id);
+        if (!podeAcessar)
+            return Forbid();
+
+        var aluno = await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (aluno == null)
+            return NotFound(new { message = "Aluno não encontrado." });
+
+        return Ok(aluno);
     }
 
     // ======================= CRIAR ALUNO =======================
@@ -97,14 +158,27 @@ public class AlunosController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        _db.Alunos.Add(aluno);
-        await _db.SaveChangesAsync();
+        var emailJaExiste = await _db.Alunos.AnyAsync(a => a.Email == aluno.Email);
+        if (emailJaExiste)
+            return Conflict(new { message = "Já existe um aluno com este e-mail." });
 
-        // Cria usuário para o aluno e tenta enviar e-mail de boas-vindas
+        var raJaExiste = await _db.Alunos.AnyAsync(a => a.RA == aluno.RA);
+        if (raJaExiste)
+            return Conflict(new { message = "Já existe um aluno com este RA." });
+
+        var cpfJaExiste = await _db.Alunos.AnyAsync(a => a.CPF == aluno.CPF);
+        if (cpfJaExiste)
+            return Conflict(new { message = "Já existe um aluno com este CPF." });
+
+        string username;
+        string senhaPlano;
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+
         try
         {
-            var username = await GerarUsernameUnicoAsync(aluno.Nome);
-            var senhaPlano = GerarSenhaAleatoria();
+            username = await GerarUsernameUnicoAsync(aluno.Nome);
+            senhaPlano = GerarSenhaAleatoria();
 
             var usuario = new Usuario
             {
@@ -117,24 +191,48 @@ public class AlunosController : ControllerBase
             _db.Usuarios.Add(usuario);
             await _db.SaveChangesAsync();
 
-            var assunto = "Acesso ao Portal EduConnect";
-            var mensagem =
-                $"Olá {aluno.Nome},\n\n" +
-                "Seu cadastro como aluno foi realizado com sucesso.\n\n" +
-                $"Usuário de acesso: {username}\n" +
-                $"Senha inicial: {senhaPlano}\n\n" +
-                "No primeiro acesso você será solicitado a definir uma nova senha.\n\n" +
-                "Atenciosamente,\nPortal EduConnect";
+            aluno.UsuarioId = usuario.Id;
 
-            await _email.EnviarAsync(aluno.Email, assunto, mensagem);
+            _db.Alunos.Add(aluno);
+            await _db.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            try
+            {
+                var assunto = "Acesso ao Portal EduConnect";
+                var mensagem =
+                    $"Olá {aluno.Nome},\n\n" +
+                    "Seu cadastro como aluno foi realizado com sucesso.\n\n" +
+                    $"Usuário de acesso: {username}\n" +
+                    $"Senha inicial: {senhaPlano}\n\n" +
+                    "No primeiro acesso você será solicitado a definir uma nova senha.\n\n" +
+                    "Atenciosamente,\nPortal EduConnect";
+
+                await _email.EnviarAsync(aluno.Email, assunto, mensagem);
+            }
+            catch (Exception exEmail)
+            {
+                _logger.LogError(
+                    exEmail,
+                    "Aluno criado, mas houve falha ao enviar e-mail de boas-vindas. AlunoId={AlunoId}, Email={Email}",
+                    aluno.Id,
+                    aluno.Email);
+            }
+
+            return CreatedAtAction(nameof(GetById), new { id = aluno.Id }, aluno);
         }
-        catch
+        catch (Exception ex)
         {
-            // Se der problema em usuário/e-mail, não falha o cadastro do aluno.
-            // Você pode logar esse erro com algum logger se quiser.
-        }
+            await transaction.RollbackAsync();
 
-        return CreatedAtAction(nameof(GetById), new { id = aluno.Id }, aluno);
+            _logger.LogError(ex, "Erro ao criar aluno e usuário vinculado.");
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocorreu um erro ao criar o aluno."
+            });
+        }
     }
 
     // ======================= ATUALIZAR / EXCLUIR =======================
@@ -144,12 +242,23 @@ public class AlunosController : ControllerBase
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<IActionResult> Update(int id, [FromBody] AlunoDto dto)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
         if (id != dto.Id)
             return BadRequest(new { message = "Id do caminho e do corpo não conferem." });
 
         var aluno = await _db.Alunos.FindAsync(id);
         if (aluno == null)
-            return NotFound();
+            return NotFound(new { message = "Aluno não encontrado." });
+
+        var emailJaExiste = await _db.Alunos.AnyAsync(a => a.Email == dto.Email && a.Id != id);
+        if (emailJaExiste)
+            return Conflict(new { message = "Já existe outro aluno com este e-mail." });
+
+        var raJaExiste = await _db.Alunos.AnyAsync(a => a.RA == dto.RA && a.Id != id);
+        if (raJaExiste)
+            return Conflict(new { message = "Já existe outro aluno com este RA." });
 
         aluno.Nome = dto.Nome;
         aluno.Email = dto.Email;
@@ -166,24 +275,56 @@ public class AlunosController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var aluno = await _db.Alunos.FindAsync(id);
-        if (aluno == null) return NotFound();
+        if (aluno == null)
+            return NotFound(new { message = "Aluno não encontrado." });
 
-        _db.Alunos.Remove(aluno);
-        await _db.SaveChangesAsync();
+        using var transaction = await _db.Database.BeginTransactionAsync();
 
-        return NoContent();
+        try
+        {
+            Usuario? usuario = null;
+
+            if (aluno.UsuarioId.HasValue)
+            {
+                usuario = await _db.Usuarios.FindAsync(aluno.UsuarioId.Value);
+            }
+
+            _db.Alunos.Remove(aluno);
+            await _db.SaveChangesAsync();
+
+            if (usuario != null)
+            {
+                _db.Usuarios.Remove(usuario);
+                await _db.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+
+            _logger.LogError(ex, "Erro ao excluir aluno Id={AlunoId}", id);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocorreu um erro ao excluir o aluno."
+            });
+        }
     }
 
     // ======================= TURMAS =======================
 
     // GET: /api/Alunos/turmas
     [HttpGet("turmas")]
-    [Authorize]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
     public async Task<ActionResult<IEnumerable<string>>> GetTurmas()
     {
         var turmas = await _db.Alunos
+            .AsNoTracking()
             .Select(a => a.Turma)
-            .Where(t => t != null && t != "")
+            .Where(t => !string.IsNullOrWhiteSpace(t))
             .Distinct()
             .OrderBy(t => t)
             .ToListAsync();
@@ -195,27 +336,19 @@ public class AlunosController : ControllerBase
 
     // GET: /api/Alunos/me
     [HttpGet("me")]
-    [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
+    [Authorize(Roles = UserRoles.Aluno)]
     public async Task<ActionResult<Aluno>> GetAlunoLogado()
     {
-        // Username vem do token (ClaimTypes.Name configurado no JwtService)
-        var username = User.FindFirstValue(ClaimTypes.Name);
-        if (string.IsNullOrWhiteSpace(username))
+        var userId = ObterUserIdDoToken();
+        if (userId == null)
             return Unauthorized(new { message = "Usuário não identificado no token." });
 
-        // Carrega todos os alunos em memória pra fazer as combinações de match
-        var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
-
-        var aluno = alunos.FirstOrDefault(a =>
-            string.Equals(a.Email, username, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(a.RA, username, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(a.Nome, username, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(GerarUsernameBasico(a.Nome), username, StringComparison.OrdinalIgnoreCase) ||
-            username.StartsWith(GerarUsernameBasico(a.Nome), StringComparison.OrdinalIgnoreCase)
-        );
+        var aluno = await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UsuarioId == userId.Value);
 
         if (aluno == null)
-            return NotFound(new { message = "Não foi possível associar o usuário logado a um aluno." });
+            return NotFound(new { message = "Aluno não encontrado para o usuário logado." });
 
         return Ok(aluno);
     }
@@ -224,9 +357,17 @@ public class AlunosController : ControllerBase
 
     // GET: /api/Alunos/{id}/media
     [HttpGet("{id:int}/media")]
-    [Authorize]
+    [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor},{UserRoles.Aluno}")]
     public async Task<ActionResult<decimal>> GetMedia(int id)
     {
+        var podeAcessar = await UsuarioAtualPodeAcessarAlunoAsync(id);
+        if (!podeAcessar)
+            return Forbid();
+
+        var alunoExiste = await _db.Alunos.AnyAsync(a => a.Id == id);
+        if (!alunoExiste)
+            return NotFound(new { message = "Aluno não encontrado." });
+
         var notas = await _db.Notas
             .Where(n => n.AlunoId == id)
             .Select(n => n.Valor)

@@ -17,70 +17,99 @@ import NotificacoesSection from "../components/sections/NotificacoesSection";
 const STORAGE_ACTIVE_SECTION = "dashboardActiveSection";
 
 export default function Dashboard() {
-  const { user, logout, markPasswordChanged } = useAuth();
+  const { user, logout, markPasswordChanged, bootstrapping } = useAuth();
   const navigate = useNavigate();
+
   const role = useMemo(() => normalizeRole(user?.role), [user]);
   const mustChange = !!user?.mustChangePassword;
 
-  // Mapa único das seções (tudo implementado)
-  const sections = useMemo(
-    () => [
+  const [activeSection, setActiveSection] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_ACTIVE_SECTION);
+    return saved || "home";
+  });
+
+  const sections = useMemo(() => {
+    const items = [
       {
         id: "home",
         label: "Home",
         roles: ["admin", "professor", "aluno"],
-        render: () => (<HomeSection navItems={navItems} onSelectSection={setActiveSection} />),
       },
       {
         id: "listagem",
         label: "Listagem",
-        roles: ["admin", "professor", "aluno"],
-        render: () => <ListagemSection />,
+        roles: ["admin", "professor"],
       },
       {
         id: "cadastro",
         label: "Cadastro",
         roles: ["admin"],
-        render: () => <CadastroSection />,
       },
       {
         id: "graficos",
         label: "Gráficos",
         roles: ["admin", "professor", "aluno"],
-        render: () => <GraficosSection role={role} />,
       },
       {
         id: "calendario",
         label: "Calendário",
-        roles: ["professor", "aluno"],
-        render: () => <CalendarioSection role={role} />,
+        roles: ["admin", "professor", "aluno"],
       },
       {
         id: "notas",
         label: "Notas",
-        roles: ["professor", "aluno"],
-        render: () => <NotasSection role={role} />,
+        roles: ["admin", "professor", "aluno"],
       },
       {
         id: "notificacoes",
         label: "Notificações",
         roles: ["aluno"],
-        render: () => <NotificacoesSection />,
       },
-    ],
-    [role, user]
-  );
+    ];
 
-  const navItems = useMemo(() => sections.filter((s) => s.roles.includes(role)), [sections, role]);
+    return items.map((item) => ({
+      ...item,
+      render: () => {
+        if (item.id === "home") {
+          return <HomeSection navItems={navItems} onSelectSection={setActiveSection} />;
+        }
 
-  const [activeSection, setActiveSection] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_ACTIVE_SECTION);
-    if (saved) return saved;
-    return "home";
-  });
+        if (item.id === "listagem") {
+          return <ListagemSection />;
+        }
+
+        if (item.id === "cadastro") {
+          return <CadastroSection />;
+        }
+
+        if (item.id === "graficos") {
+          return <GraficosSection role={role} />;
+        }
+
+        if (item.id === "calendario") {
+          return <CalendarioSection role={role} />;
+        }
+
+        if (item.id === "notas") {
+          return <NotasSection role={role} />;
+        }
+
+        if (item.id === "notificacoes") {
+          return <NotificacoesSection />;
+        }
+
+        return <div className="alert alert-warning">Seção não encontrada.</div>;
+      },
+    }));
+  }, [role]);
+
+  const navItems = useMemo(() => {
+    return sections.filter((section) => section.roles.includes(role));
+  }, [sections, role]);
 
   useEffect(() => {
-    const allowedIds = new Set(navItems.map((x) => x.id));
+    const allowedIds = new Set(navItems.map((item) => item.id));
+
     if (!allowedIds.has(activeSection)) {
       setActiveSection(navItems[0]?.id || "home");
     }
@@ -95,12 +124,19 @@ export default function Dashboard() {
     navigate("/");
   }
 
-  const current = sections.find((s) => s.id === activeSection);
+  const current = sections.find((section) => section.id === activeSection);
   const hasPermission = current?.roles?.includes(role);
+
+  if (bootstrapping) {
+    return (
+      <div className="container py-3">
+        <div className="card p-3">Carregando sessão...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-3" style={{ position: "relative" }}>
-      {/* Modal obrigatório: primeiro acesso */}
       <ChangePasswordModal
         open={mustChange}
         username={user?.username}
@@ -110,7 +146,6 @@ export default function Dashboard() {
         }}
       />
 
-      {/* Enquanto mustChangePassword estiver ativo, trava o app */}
       <div
         style={{
           filter: mustChange ? "blur(2px)" : "none",
@@ -128,7 +163,9 @@ export default function Dashboard() {
         {!current ? (
           <div className="alert alert-warning">Seção não encontrada.</div>
         ) : !hasPermission ? (
-          <div className="alert alert-warning">Você não tem permissão para acessar esta seção.</div>
+          <div className="alert alert-warning">
+            Você não tem permissão para acessar esta seção.
+          </div>
         ) : (
           current.render()
         )}

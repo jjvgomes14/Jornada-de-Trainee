@@ -1,5 +1,4 @@
-﻿// MatriculasController.cs
-using EduConnect.Api.Data;
+﻿using EduConnect.Api.Data;
 using EduConnect.Api.DTOs;
 using EduConnect.Api.Models;
 using EduConnect.Api.Services;
@@ -15,11 +14,16 @@ public class MatriculasController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly EmailService _email;
+    private readonly ILogger<MatriculasController> _logger;
 
-    public MatriculasController(ApplicationDbContext db, EmailService email)
+    public MatriculasController(
+        ApplicationDbContext db,
+        EmailService email,
+        ILogger<MatriculasController> logger)
     {
         _db = db;
         _email = email;
+        _logger = logger;
     }
 
     private static string GerarUsernameBasico(string nomeCompleto)
@@ -56,7 +60,6 @@ public class MatriculasController : ControllerBase
 
     private static string GerarSenhaAleatoria(int tamanho = 10)
     {
-        // Pega só os primeiros N caracteres de um GUID sem traços
         return Guid.NewGuid()
             .ToString("N")
             .Substring(0, tamanho);
@@ -65,8 +68,8 @@ public class MatriculasController : ControllerBase
     // =========================
     // 1) SOLICITAR MATRÍCULA
     // =========================
+
     // POST: /api/Matriculas/solicitar
-    // Qualquer pessoa (sem login) pode solicitar matrícula
     [HttpPost("solicitar")]
     [AllowAnonymous]
     public async Task<IActionResult> Solicitar([FromBody] MatriculaSolicitacaoDto dto)
@@ -74,14 +77,39 @@ public class MatriculasController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
+        var emailNormalizado = dto.Email.Trim();
+        var cpfNormalizado = dto.CPF.Trim();
+
+        var jaExisteAluno = await _db.Alunos.AnyAsync(a =>
+            a.Email == emailNormalizado || a.CPF == cpfNormalizado);
+
+        if (jaExisteAluno)
+        {
+            return Conflict(new
+            {
+                message = "Já existe um aluno cadastrado com este e-mail ou CPF."
+            });
+        }
+
+        var jaExisteSolicitacaoPendente = await _db.SolicitacoesMatricula.AnyAsync(s =>
+            s.Status == StatusMatricula.Pendente &&
+            (s.Email == emailNormalizado || s.CPF == cpfNormalizado));
+
+        if (jaExisteSolicitacaoPendente)
+        {
+            return Conflict(new
+            {
+                message = "Já existe uma solicitação de matrícula pendente com este e-mail ou CPF."
+            });
+        }
+
         var solicitacao = new SolicitacaoMatricula
         {
             Nome = dto.Nome.Trim(),
-            Email = dto.Email.Trim(),
+            Email = emailNormalizado,
             DataNascimento = dto.DataNascimento.Date,
-
             RG = dto.RG.Trim(),
-            CPF = dto.CPF.Trim(),
+            CPF = cpfNormalizado,
             Celular = dto.Celular.Trim(),
             CEP = dto.CEP.Trim(),
             Estado = dto.Estado.Trim(),
@@ -89,7 +117,6 @@ public class MatriculasController : ControllerBase
             Bairro = dto.Bairro.Trim(),
             Rua = dto.Rua.Trim(),
             NumeroCasa = dto.NumeroCasa.Trim(),
-
             CriadoEm = DateTime.UtcNow,
             Status = StatusMatricula.Pendente
         };
@@ -97,7 +124,6 @@ public class MatriculasController : ControllerBase
         _db.SolicitacoesMatricula.Add(solicitacao);
         await _db.SaveChangesAsync();
 
-        // Tenta enviar e-mail de confirmação, mas não falha a requisição se der erro
         try
         {
             var assunto = "Solicitação de matrícula recebida – EduConnect";
@@ -109,17 +135,21 @@ public class MatriculasController : ControllerBase
 
             await _email.EnviarAsync(solicitacao.Email, assunto, mensagem);
         }
-        catch
+        catch (Exception ex)
         {
-            // aqui você poderia logar o erro se tiver um logger configurado
+            _logger.LogError(
+                ex,
+                "Solicitação registrada, mas houve falha ao enviar e-mail de confirmação. SolicitacaoId={SolicitacaoId}",
+                solicitacao.Id);
         }
 
         return Ok(new { message = "Solicitação registrada com sucesso." });
     }
 
     // =========================
-    // 2) LISTAR PENDENTES (ADMIN)
+    // 2) LISTAR PENDENTES
     // =========================
+
     // GET: /api/Matriculas/pendentes
     [HttpGet("pendentes")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -129,37 +159,34 @@ public class MatriculasController : ControllerBase
             .AsNoTracking()
             .Where(s => s.Status == StatusMatricula.Pendente)
             .OrderByDescending(s => s.CriadoEm)
+            .Select(s => new
+            {
+                s.Id,
+                s.Nome,
+                s.Email,
+                dataNascimento = s.DataNascimento,
+                dataCriacao = s.CriadoEm,
+                status = s.Status.ToString(),
+                s.Observacao,
+                rg = s.RG,
+                cpf = s.CPF,
+                celular = s.Celular,
+                cep = s.CEP,
+                estado = s.Estado,
+                cidade = s.Cidade,
+                bairro = s.Bairro,
+                rua = s.Rua,
+                numeroCasa = s.NumeroCasa
+            })
             .ToListAsync();
 
-        var resultado = pendentes.Select(s => new
-        {
-            s.Id,
-            s.Nome,
-            s.Email,
-            dataNascimento = s.DataNascimento,
-            dataCriacao = s.CriadoEm,
-            status = s.Status.ToString(),
-            s.Observacao,
-
-            // 👇 campos extras para preencher o modal de cadastro de aluno
-            rg = s.RG,
-            cpf = s.CPF,
-            celular = s.Celular,
-            cep = s.CEP,
-            estado = s.Estado,
-            cidade = s.Cidade,
-            bairro = s.Bairro,
-            rua = s.Rua,
-            numeroCasa = s.NumeroCasa
-        });
-
-        return Ok(resultado);
+        return Ok(pendentes);
     }
 
+    // =========================
+    // 3) RESPONDER MATRÍCULA
+    // =========================
 
-    // =========================
-    // 3) RESPONDER MATRÍCULA (ADMIN)
-    // =========================
     // POST: /api/Matriculas/responder
     [HttpPost("responder")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -173,78 +200,123 @@ public class MatriculasController : ControllerBase
             return NotFound(new { message = "Solicitação de matrícula não encontrada." });
 
         if (solicitacao.Status != StatusMatricula.Pendente)
-            return BadRequest(new { message = "Esta solicitação já foi respondida anteriormente." });
+        {
+            return BadRequest(new
+            {
+                message = "Esta solicitação já foi respondida anteriormente."
+            });
+        }
 
-        // vamos guardar aqui para usar no e-mail
         string? usernameGerado = null;
         string? senhaGerada = null;
 
-        // Se for aprovar, precisamos de RA e Turma e criamos o aluno + usuário
         if (dto.Aprovar)
         {
             if (string.IsNullOrWhiteSpace(dto.RA) || string.IsNullOrWhiteSpace(dto.Turma))
             {
-                return BadRequest(new { message = "Para aprovar a matrícula, informe RA e Turma." });
+                return BadRequest(new
+                {
+                    message = "Para aprovar a matrícula, informe RA e Turma."
+                });
             }
 
             var raNormalizado = dto.RA.Trim();
+            var turmaNormalizada = dto.Turma.Trim();
 
-            // Garante que não terá RA duplicado
             var raJaExiste = await _db.Alunos.AnyAsync(a => a.RA == raNormalizado);
             if (raJaExiste)
             {
-                return BadRequest(new { message = "Já existe um aluno cadastrado com esse RA." });
+                return BadRequest(new
+                {
+                    message = "Já existe um aluno cadastrado com esse RA."
+                });
             }
 
-            var aluno = new Aluno
+            var emailJaExiste = await _db.Alunos.AnyAsync(a => a.Email == solicitacao.Email);
+            if (emailJaExiste)
             {
-                Nome = solicitacao.Nome,
-                Email = solicitacao.Email,
-                DataNascimento = solicitacao.DataNascimento,
-                RA = raNormalizado,
-                Turma = dto.Turma.Trim(),
+                return BadRequest(new
+                {
+                    message = "Já existe um aluno cadastrado com este e-mail."
+                });
+            }
 
-                RG = solicitacao.RG,
-                CPF = solicitacao.CPF,
-                Celular = solicitacao.Celular,
-                CEP = solicitacao.CEP,
-                Estado = solicitacao.Estado,
-                Cidade = solicitacao.Cidade,
-                Bairro = solicitacao.Bairro,
-                Rua = solicitacao.Rua,
-                NumeroCasa = solicitacao.NumeroCasa
-            };
-
-            _db.Alunos.Add(aluno);
-
-            // ==== cria usuário de portal para o aluno ====
-            usernameGerado = await GerarUsernameUnicoAsync(solicitacao.Nome);
-            senhaGerada = GerarSenhaAleatoria();
-
-            var usuario = new Usuario
+            var cpfJaExiste = await _db.Alunos.AnyAsync(a => a.CPF == solicitacao.CPF);
+            if (cpfJaExiste)
             {
-                Username = usernameGerado,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(senhaGerada),
-                Role = UserRoles.Aluno,
-                PrimeiroAcesso = true
-            };
+                return BadRequest(new
+                {
+                    message = "Já existe um aluno cadastrado com este CPF."
+                });
+            }
 
-            _db.Usuarios.Add(usuario);
-            // =============================================
+            using var transaction = await _db.Database.BeginTransactionAsync();
 
-            solicitacao.Status = StatusMatricula.Aprovada;
-            solicitacao.Observacao = dto.Observacao;
+            try
+            {
+                usernameGerado = await GerarUsernameUnicoAsync(solicitacao.Nome);
+                senhaGerada = GerarSenhaAleatoria();
+
+                var usuario = new Usuario
+                {
+                    Username = usernameGerado,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(senhaGerada),
+                    Role = UserRoles.Aluno,
+                    PrimeiroAcesso = true
+                };
+
+                _db.Usuarios.Add(usuario);
+                await _db.SaveChangesAsync();
+
+                var aluno = new Aluno
+                {
+                    Nome = solicitacao.Nome,
+                    Email = solicitacao.Email,
+                    DataNascimento = solicitacao.DataNascimento,
+                    RA = raNormalizado,
+                    Turma = turmaNormalizada,
+                    RG = solicitacao.RG,
+                    CPF = solicitacao.CPF,
+                    Celular = solicitacao.Celular,
+                    CEP = solicitacao.CEP,
+                    Estado = solicitacao.Estado,
+                    Cidade = solicitacao.Cidade,
+                    Bairro = solicitacao.Bairro,
+                    Rua = solicitacao.Rua,
+                    NumeroCasa = solicitacao.NumeroCasa,
+                    UsuarioId = usuario.Id
+                };
+
+                _db.Alunos.Add(aluno);
+
+                solicitacao.Status = StatusMatricula.Aprovada;
+                solicitacao.Observacao = dto.Observacao;
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+
+                _logger.LogError(
+                    ex,
+                    "Erro ao aprovar solicitação de matrícula Id={SolicitacaoId}",
+                    solicitacao.Id);
+
+                return StatusCode(StatusCodes.Status500InternalServerError, new
+                {
+                    message = "Ocorreu um erro ao aprovar a solicitação."
+                });
+            }
         }
         else
         {
-            // Rejeitada
             solicitacao.Status = StatusMatricula.Rejeitada;
             solicitacao.Observacao = dto.Observacao;
+            await _db.SaveChangesAsync();
         }
 
-        await _db.SaveChangesAsync();
-
-        // E-mail informando aprovação/rejeição + (se aprovado) login e senha
         try
         {
             var assunto = dto.Aprovar
@@ -257,12 +329,13 @@ public class MatriculasController : ControllerBase
             {
                 mensagem += "Sua solicitação de matrícula foi APROVADA.\n\n";
 
-                if (!string.IsNullOrEmpty(usernameGerado) && !string.IsNullOrEmpty(senhaGerada))
+                if (!string.IsNullOrWhiteSpace(usernameGerado) && !string.IsNullOrWhiteSpace(senhaGerada))
                 {
-                    mensagem += "Segue abaixo seus dados de acesso ao Portal EduConnect:\n" +
-                                $"Usuário: {usernameGerado}\n" +
-                                $"Senha inicial: {senhaGerada}\n\n" +
-                                "No primeiro acesso você será solicitado a definir uma nova senha.\n\n";
+                    mensagem +=
+                        "Segue abaixo seus dados de acesso ao Portal EduConnect:\n" +
+                        $"Usuário: {usernameGerado}\n" +
+                        $"Senha inicial: {senhaGerada}\n\n" +
+                        "No primeiro acesso você será solicitado a definir uma nova senha.\n\n";
                 }
             }
             else
@@ -279,12 +352,14 @@ public class MatriculasController : ControllerBase
 
             await _email.EnviarAsync(solicitacao.Email, assunto, mensagem);
         }
-        catch
+        catch (Exception ex)
         {
-            // aqui poderia logar o erro
+            _logger.LogError(
+                ex,
+                "Solicitação respondida, mas houve falha ao enviar e-mail. SolicitacaoId={SolicitacaoId}",
+                solicitacao.Id);
         }
 
         return NoContent();
     }
-
 }

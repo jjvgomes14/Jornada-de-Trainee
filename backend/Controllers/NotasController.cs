@@ -1,14 +1,13 @@
-﻿using EduConnect.Api.Data;
+﻿using System.Security.Claims;
+using EduConnect.Api.Data;
 using EduConnect.Api.DTOs;
 using EduConnect.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
-
 
 namespace EduConnect.Api.Controllers;
 
@@ -17,45 +16,97 @@ namespace EduConnect.Api.Controllers;
 public class NotasController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly ILogger<NotasController> _logger;
 
-    public NotasController(ApplicationDbContext db)
+    public NotasController(ApplicationDbContext db, ILogger<NotasController> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     // ==========================
     // HELPERS PRIVADOS
     // ==========================
 
-    /// <summary>
-    /// Retorna o professor vinculado ao usuário logado (ou null).
-    /// Usa a claim "userId" do token para achar Professor.UsuarioId.
-    /// </summary>
+    private int? ObterUserIdDoToken()
+    {
+        var userIdStr = User.FindFirstValue("userId");
+        if (int.TryParse(userIdStr, out var userId))
+            return userId;
+
+        return null;
+    }
+
     private async Task<Professor?> ObterProfessorLogadoAsync()
     {
-        var userIdStr = User.FindFirst("userId")?.Value;
-        if (!int.TryParse(userIdStr, out var userId))
+        var userId = ObterUserIdDoToken();
+        if (userId == null)
             return null;
 
         return await _db.Professores
-            .FirstOrDefaultAsync(p => p.UsuarioId == userId);
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UsuarioId == userId.Value);
     }
 
-    /// <summary>
-    /// Garante que exista uma entidade Disciplina com o nome informado.
-    /// Se não existir, cria.
-    /// </summary>
+    private async Task<Aluno?> ObterAlunoLogadoAsync()
+    {
+        var userId = ObterUserIdDoToken();
+        if (userId == null)
+            return null;
+
+        return await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UsuarioId == userId.Value);
+    }
+
+    private async Task<bool> ProfessorPodeAcessarAlunoAsync(int professorId, int alunoId)
+    {
+        return await _db.Notas.AnyAsync(n =>
+            n.ProfessorId == professorId &&
+            n.AlunoId == alunoId);
+    }
+
+    private async Task<bool> UsuarioPodeAcessarAlunoAsync(int alunoId)
+    {
+        if (User.IsInRole(UserRoles.Administrador))
+            return true;
+
+        if (User.IsInRole(UserRoles.Aluno))
+        {
+            var alunoLogado = await ObterAlunoLogadoAsync();
+            return alunoLogado != null && alunoLogado.Id == alunoId;
+        }
+
+        if (User.IsInRole(UserRoles.Professor))
+        {
+            var professor = await ObterProfessorLogadoAsync();
+            if (professor == null)
+                return false;
+
+            return await ProfessorPodeAcessarAlunoAsync(professor.Id, alunoId);
+        }
+
+        return false;
+    }
+
     private async Task<Disciplina> ObterOuCriarDisciplinaAsync(string nome)
     {
-        var nomeNormalizado = nome.Trim();
+        var nomeNormalizado = (nome ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(nomeNormalizado))
+            throw new InvalidOperationException("O professor logado não possui disciplina válida cadastrada.");
 
         var disciplina = await _db.Disciplinas
-            .FirstOrDefaultAsync(d => d.Nome == nomeNormalizado);
+            .FirstOrDefaultAsync(d => d.Nome.ToLower() == nomeNormalizado.ToLower());
 
         if (disciplina != null)
             return disciplina;
 
-        disciplina = new Disciplina { Nome = nomeNormalizado };
+        disciplina = new Disciplina
+        {
+            Nome = nomeNormalizado
+        };
+
         _db.Disciplinas.Add(disciplina);
         await _db.SaveChangesAsync();
 
@@ -79,7 +130,7 @@ public class NotasController : ControllerBase
     }
 
     // ==========================
-    // NOTAS DO PROFESSOR (LISTA)
+    // NOTAS DO PROFESSOR
     // ==========================
 
     // GET: /api/Notas/professor
@@ -91,29 +142,30 @@ public class NotasController : ControllerBase
         if (professor == null)
             return Forbid();
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Aluno)
-                .Include(x => x.Disciplina)
-            where n.ProfessorId == professor.Id
-            orderby n.DataLancamento descending
-            select new
+        var resultado = await _db.Notas
+            .AsNoTracking()
+            .Include(n => n.Aluno)
+            .Include(n => n.Disciplina)
+            .Where(n => n.ProfessorId == professor.Id)
+            .OrderByDescending(n => n.DataLancamento)
+            .Select(n => new
             {
                 id = n.Id,
                 alunoId = n.AlunoId,
-                tipo = n.Tipo.ToString(),      // <- devolve Atividade/P1/P2
+                alunoNome = n.Aluno != null ? n.Aluno.Nome : string.Empty,
+                tipo = n.Tipo.ToString(),
                 valor = n.Valor,
-                turma = n.Aluno!.Turma,
-                disciplina = n.Disciplina!.Nome,
+                turma = n.Aluno != null ? n.Aluno.Turma : string.Empty,
+                disciplina = n.Disciplina != null ? n.Disciplina.Nome : string.Empty,
                 data = n.DataLancamento
-            };
+            })
+            .ToListAsync();
 
-        var resultado = await query.AsNoTracking().ToListAsync();
         return Ok(resultado);
     }
 
     // ==========================
-    // LANÇAR / EDITAR NOTA (PROFESSOR)
+    // CRIAR / EDITAR NOTA
     // ==========================
 
     // POST: /api/Notas
@@ -143,61 +195,72 @@ public class NotasController : ControllerBase
         if (professor == null)
             return Forbid();
 
-        var aluno = await _db.Alunos.FindAsync(dto.AlunoId);
+        var aluno = await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == dto.AlunoId);
+
         if (aluno == null)
             return NotFound(new { message = "Aluno não encontrado." });
 
-        var disciplina = await ObterOuCriarDisciplinaAsync(professor.Disciplina);
-
-        // Verifica se já existe nota desse tipo para esse aluno + professor + disciplina
-        var nota = await _db.Notas.FirstOrDefaultAsync(n =>
-            n.AlunoId == aluno.Id &&
-            n.ProfessorId == professor.Id &&
-            n.DisciplinaId == disciplina.Id &&
-            n.Tipo == tipoAvaliacao.Value);
-
-        if (nota == null)
+        try
         {
-            // Cria nova (ainda não existe)
-            nota = new Nota
+            var disciplina = await ObterOuCriarDisciplinaAsync(professor.Disciplina);
+
+            var nota = await _db.Notas.FirstOrDefaultAsync(n =>
+                n.AlunoId == aluno.Id &&
+                n.ProfessorId == professor.Id &&
+                n.DisciplinaId == disciplina.Id &&
+                n.Tipo == tipoAvaliacao.Value);
+
+            if (nota == null)
             {
-                AlunoId = aluno.Id,
-                ProfessorId = professor.Id,
-                DisciplinaId = disciplina.Id,
-                Tipo = tipoAvaliacao.Value,
-                Valor = dto.Valor,
-                DataLancamento = DateTime.UtcNow
+                nota = new Nota
+                {
+                    AlunoId = aluno.Id,
+                    ProfessorId = professor.Id,
+                    DisciplinaId = disciplina.Id,
+                    Tipo = tipoAvaliacao.Value,
+                    Valor = dto.Valor,
+                    DataLancamento = DateTime.UtcNow
+                };
+
+                _db.Notas.Add(nota);
+            }
+            else
+            {
+                nota.Valor = dto.Valor;
+                nota.DataLancamento = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync();
+
+            var resposta = new
+            {
+                id = nota.Id,
+                alunoId = nota.AlunoId,
+                alunoNome = aluno.Nome,
+                tipo = nota.Tipo.ToString(),
+                valor = nota.Valor,
+                turma = aluno.Turma,
+                disciplina = disciplina.Nome,
+                data = nota.DataLancamento
             };
 
-            _db.Notas.Add(nota);
+            return Ok(resposta);
         }
-        else
+        catch (Exception ex)
         {
-            // Atualiza a nota existente (permite editar)
-            nota.Valor = dto.Valor;
-            nota.DataLancamento = DateTime.UtcNow;
+            _logger.LogError(ex, "Erro ao lançar/atualizar nota para AlunoId={AlunoId}", dto.AlunoId);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocorreu um erro ao salvar a nota."
+            });
         }
-
-        await _db.SaveChangesAsync();
-
-        var resposta = new
-        {
-            id = nota.Id,
-            alunoId = nota.AlunoId,
-            tipo = nota.Tipo.ToString(),
-            valor = nota.Valor,
-            turma = aluno.Turma,
-            disciplina = disciplina.Nome,
-            data = nota.DataLancamento
-        };
-
-        // não faz mais sentido CreatedAt, é um "upsert"
-        return Ok(resposta);
     }
 
     // ==========================
-    // REMOVER NOTA (PROFESSOR)
-    // (continua permitindo deletar, se quiser)
+    // EXCLUIR NOTA
     // ==========================
 
     // DELETE: /api/Notas/{id}
@@ -209,12 +272,12 @@ public class NotasController : ControllerBase
         if (professor == null)
             return Forbid();
 
-        var nota = await _db.Notas.FindAsync(id);
+        var nota = await _db.Notas.FirstOrDefaultAsync(n => n.Id == id);
         if (nota == null)
-            return NotFound();
+            return NotFound(new { message = "Nota não encontrada." });
 
         if (nota.ProfessorId != professor.Id)
-            return Forbid(); // professor só apaga nota dele
+            return Forbid();
 
         _db.Notas.Remove(nota);
         await _db.SaveChangesAsync();
@@ -235,23 +298,23 @@ public class NotasController : ControllerBase
         if (professor == null)
             return Forbid();
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Aluno)
-            where n.ProfessorId == professor.Id
-            group n by n.Aluno!.Turma into g
-            select new
+        var resultado = await _db.Notas
+            .AsNoTracking()
+            .Include(n => n.Aluno)
+            .Where(n => n.ProfessorId == professor.Id)
+            .GroupBy(n => n.Aluno != null ? n.Aluno.Turma : string.Empty)
+            .Select(g => new
             {
                 turma = g.Key,
                 media = g.Average(x => x.Valor)
-            };
+            })
+            .ToListAsync();
 
-        var resultado = await query.AsNoTracking().ToListAsync();
         return Ok(resultado);
     }
 
     // ==========================
-    // GRÁFICO – ADMIN (POR TURMA)
+    // GRÁFICO – ADMIN
     // ==========================
 
     // GET: /api/Notas/grafico-admin?turma=1A
@@ -264,24 +327,24 @@ public class NotasController : ControllerBase
 
         var turmaNormalizada = turma.Trim();
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Aluno)
-                .Include(x => x.Disciplina)
-            where n.Aluno!.Turma == turmaNormalizada
-            group n by n.Disciplina!.Nome into g
-            select new
+        var resultado = await _db.Notas
+            .AsNoTracking()
+            .Include(n => n.Aluno)
+            .Include(n => n.Disciplina)
+            .Where(n => n.Aluno != null && n.Aluno.Turma == turmaNormalizada)
+            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .Select(g => new
             {
                 disciplina = g.Key,
                 media = g.Average(x => x.Valor)
-            };
+            })
+            .ToListAsync();
 
-        var resultado = await query.AsNoTracking().ToListAsync();
         return Ok(resultado);
     }
 
     // ==========================
-    // GRÁFICO – ALUNO ESPECÍFICO
+    // GRÁFICO – ALUNO
     // ==========================
 
     // GET: /api/Notas/grafico-aluno/{alunoId}
@@ -289,28 +352,31 @@ public class NotasController : ControllerBase
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
     public async Task<ActionResult<IEnumerable<object>>> GraficoAluno(int alunoId)
     {
+        var podeAcessar = await UsuarioPodeAcessarAlunoAsync(alunoId);
+        if (!podeAcessar)
+            return Forbid();
+
         var existeAluno = await _db.Alunos.AnyAsync(a => a.Id == alunoId);
         if (!existeAluno)
             return NotFound(new { message = "Aluno não encontrado." });
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Disciplina)
-            where n.AlunoId == alunoId
-            group n by n.Disciplina!.Nome into g
-            select new
+        var resultado = await _db.Notas
+            .AsNoTracking()
+            .Include(n => n.Disciplina)
+            .Where(n => n.AlunoId == alunoId)
+            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .Select(g => new
             {
                 disciplina = g.Key,
                 media = g.Average(x => x.Valor)
-            };
+            })
+            .ToListAsync();
 
-        var resultado = await query.AsNoTracking().ToListAsync();
         return Ok(resultado);
     }
 
     // ==========================
-    // LISTA DE NOTAS – ALUNO (DETALHADO)
-    // Matéria, Atividade, P1, P2, Média
+    // DETALHES DO ALUNO
     // ==========================
 
     // GET: /api/Notas/aluno-detalhes/{alunoId}
@@ -318,37 +384,35 @@ public class NotasController : ControllerBase
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
     public async Task<ActionResult<IEnumerable<object>>> AlunoDetalhes(int alunoId)
     {
+        var podeAcessar = await UsuarioPodeAcessarAlunoAsync(alunoId);
+        if (!podeAcessar)
+            return Forbid();
+
         var existeAluno = await _db.Alunos.AnyAsync(a => a.Id == alunoId);
         if (!existeAluno)
             return NotFound(new { message = "Aluno não encontrado." });
 
-        var query =
-            from n in _db.Notas
-                .Include(x => x.Disciplina)
-            where n.AlunoId == alunoId
-            group n by n.Disciplina!.Nome into g
-            select new
+        var resultado = await _db.Notas
+            .AsNoTracking()
+            .Include(n => n.Disciplina)
+            .Where(n => n.AlunoId == alunoId)
+            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .Select(g => new
             {
                 disciplina = g.Key,
-
                 atividade = g.Where(x => x.Tipo == TipoAvaliacao.Atividade)
-                             .Select(x => (decimal?)x.Valor)
-                             .FirstOrDefault(),
-
+                    .Select(x => (decimal?)x.Valor)
+                    .FirstOrDefault(),
                 p1 = g.Where(x => x.Tipo == TipoAvaliacao.P1)
-                      .Select(x => (decimal?)x.Valor)
-                      .FirstOrDefault(),
-
+                    .Select(x => (decimal?)x.Valor)
+                    .FirstOrDefault(),
                 p2 = g.Where(x => x.Tipo == TipoAvaliacao.P2)
-                      .Select(x => (decimal?)x.Valor)
-                      .FirstOrDefault(),
-
+                    .Select(x => (decimal?)x.Valor)
+                    .FirstOrDefault(),
                 media = (decimal?)g.Average(x => x.Valor)
-            };
+            })
+            .ToListAsync();
 
-        var resultado = await query.AsNoTracking().ToListAsync();
-
-        // arredondar (opcional, mas fica mais bonito no front)
         var formatado = resultado.Select(x => new
         {
             x.disciplina,
@@ -362,62 +426,37 @@ public class NotasController : ControllerBase
     }
 
     // ==========================
-    // BOLETIM (PDF) – ALUNO
+    // BOLETIM PDF
     // ==========================
+
     // GET: /api/Notas/boletim/{alunoId}
     [HttpGet("boletim/{alunoId:int}")]
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
     public async Task<IActionResult> GerarBoletim(int alunoId)
     {
-        // Se for ALUNO, só pode gerar o próprio boletim
-        if (User.IsInRole(UserRoles.Aluno))
-        {
-            var username = User.FindFirstValue(ClaimTypes.Name);
-            if (string.IsNullOrWhiteSpace(username))
-                return Unauthorized(new { message = "Usuário não identificado no token." });
+        var podeAcessar = await UsuarioPodeAcessarAlunoAsync(alunoId);
+        if (!podeAcessar)
+            return Forbid();
 
-            // mesmo critério do /Alunos/me (pra amarrar usuário->aluno)
-            static string GerarUsernameBasico(string nomeCompleto)
-            {
-                var partes = nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var primeiraLetra = char.ToLowerInvariant(partes[0][0]);
-                var ultimoSobrenome = partes.Length > 1 ? partes[^1].ToLowerInvariant() : partes[0].ToLowerInvariant();
-                return $"{primeiraLetra}{ultimoSobrenome}";
-            }
+        var aluno = await _db.Alunos
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == alunoId);
 
-            var alunos = await _db.Alunos.AsNoTracking().ToListAsync();
-            var alunoLogado = alunos.FirstOrDefault(a =>
-                string.Equals(a.Email, username, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(a.RA, username, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(a.Nome, username, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(GerarUsernameBasico(a.Nome), username, StringComparison.OrdinalIgnoreCase) ||
-                username.StartsWith(GerarUsernameBasico(a.Nome), StringComparison.OrdinalIgnoreCase)
-            );
-
-            if (alunoLogado == null)
-                return Forbid();
-
-            if (alunoLogado.Id != alunoId)
-                return Forbid();
-        }
-
-        var aluno = await _db.Alunos.AsNoTracking().FirstOrDefaultAsync(a => a.Id == alunoId);
         if (aluno == null)
             return NotFound(new { message = "Aluno não encontrado." });
 
-        var medias =
-            await (from n in _db.Notas.Include(x => x.Disciplina)
-                   where n.AlunoId == alunoId
-                   group n by n.Disciplina!.Nome into g
-                   select new
-                   {
-                       Disciplina = g.Key,
-                       Media = g.Average(x => x.Valor)
-                   })
+        var medias = await _db.Notas
             .AsNoTracking()
+            .Include(n => n.Disciplina)
+            .Where(n => n.AlunoId == alunoId)
+            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .Select(g => new
+            {
+                Disciplina = g.Key,
+                Media = g.Average(x => x.Valor)
+            })
             .ToListAsync();
 
-        // ordena e calcula status
         var linhas = medias
             .OrderBy(x => x.Disciplina)
             .Select(x => new
@@ -430,7 +469,6 @@ public class NotasController : ControllerBase
 
         var dataEmissao = DateTime.Now;
 
-        // Gera PDF
         var pdfBytes = Document.Create(container =>
         {
             container.Page(page =>
@@ -460,9 +498,9 @@ public class NotasController : ControllerBase
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(6); // Disciplina
-                            columns.RelativeColumn(2); // Média
-                            columns.RelativeColumn(3); // Status
+                            columns.RelativeColumn(6);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(3);
                         });
 
                         table.Header(header =>
@@ -474,22 +512,26 @@ public class NotasController : ControllerBase
 
                         if (linhas.Count == 0)
                         {
-                            table.Cell().ColumnSpan(3).PaddingVertical(10)
-                                 .Text("Nenhuma nota lançada ainda.").Italic();
+                            table.Cell()
+                                .ColumnSpan(3)
+                                .PaddingVertical(10)
+                                .Text("Nenhuma nota lançada ainda.")
+                                .Italic();
                         }
                         else
                         {
-                            foreach (var l in linhas)
+                            foreach (var linha in linhas)
                             {
-                                table.Cell().Element(CellBody).Text(l.Disciplina);
-                                table.Cell().Element(CellBody).AlignCenter().Text(l.Media.ToString("0.00"));
-                                table.Cell().Element(CellBody).AlignCenter().Text(l.Status);
+                                table.Cell().Element(CellBody).Text(linha.Disciplina);
+                                table.Cell().Element(CellBody).AlignCenter().Text(linha.Media.ToString("0.00"));
+                                table.Cell().Element(CellBody).AlignCenter().Text(linha.Status);
                             }
                         }
                     });
 
                     col.Item().Text("Critério: aprovado com média >= 5,0.")
-                              .FontSize(10).FontColor(Colors.Grey.Darken2);
+                        .FontSize(10)
+                        .FontColor(Colors.Grey.Darken2);
                 });
 
                 page.Footer().AlignCenter().Text(t =>
@@ -501,15 +543,20 @@ public class NotasController : ControllerBase
                 });
 
                 static IContainer CellHeader(IContainer c) =>
-                    c.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(6).PaddingHorizontal(6).Background(Colors.Grey.Lighten3);
+                    c.DefaultTextStyle(x => x.SemiBold())
+                        .PaddingVertical(6)
+                        .PaddingHorizontal(6)
+                        .Background(Colors.Grey.Lighten3);
 
                 static IContainer CellBody(IContainer c) =>
-                    c.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingVertical(6).PaddingHorizontal(6);
+                    c.BorderBottom(1)
+                        .BorderColor(Colors.Grey.Lighten2)
+                        .PaddingVertical(6)
+                        .PaddingHorizontal(6);
             });
         }).GeneratePdf();
 
         var fileName = $"Boletim_{aluno.RA}_{dataEmissao:yyyyMMddHHmm}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
     }
-
 }

@@ -1,6 +1,23 @@
 import ThemeSwitch from "./ThemeSwitch";
+import { normalizeRole } from "../auth/role";
 
-export default function Navbar({ user, navItems, activeSection, setActiveSection, onLogout }) {
+function getRoleLabel(roleRaw) {
+  const role = normalizeRole(roleRaw);
+
+  if (role === "admin") return "Administrador";
+  if (role === "professor") return "Professor";
+  if (role === "aluno") return "Aluno";
+
+  return roleRaw || "Usuário";
+}
+
+export default function Navbar({
+  user,
+  navItems,
+  activeSection,
+  setActiveSection,
+  onLogout,
+}) {
   return (
     <div className="topbar mb-3">
       <div className="container py-2">
@@ -8,7 +25,7 @@ export default function Navbar({ user, navItems, activeSection, setActiveSection
           <div className="d-flex align-items-center gap-2">
             <span className="badge bg-primary">EduConnect</span>
             <span className="text-muted">
-              <b>{user?.username}</b> · <b>{user?.role}</b>
+              <b>{user?.username || "Usuário"}</b> · <b>{getRoleLabel(user?.role)}</b>
             </span>
           </div>
 
@@ -24,7 +41,9 @@ export default function Navbar({ user, navItems, activeSection, setActiveSection
           {navItems.map((item) => (
             <button
               key={item.id}
-              className={`btn btn-sm ${activeSection === item.id ? "btn-primary" : "btn-outline-primary"}`}
+              className={`btn btn-sm ${
+                activeSection === item.id ? "btn-primary" : "btn-outline-primary"
+              }`}
               onClick={() => setActiveSection(item.id)}
             >
               {item.label}

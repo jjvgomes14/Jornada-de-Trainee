@@ -13,9 +13,14 @@ var builder = WebApplication.CreateBuilder(args);
 // ===============================================
 // 1) CONFIGURAÇÃO DO BANCO DE DADOS
 // ===============================================
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException("A connection string 'DefaultConnection' não foi configurada.");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseSqlServer(connectionString);
 });
 
 // ===============================================
@@ -30,7 +35,6 @@ builder.Services.AddSwaggerGen(opt =>
 {
     opt.SwaggerDoc("v1", new() { Title = "EduConnect API", Version = "v1" });
 
-    // Adiciona esquema Bearer Token no Swagger
     opt.AddSecurityDefinition("Bearer", new()
     {
         Description = "Insira: Bearer {seu_token}",
@@ -56,6 +60,12 @@ var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new InvalidOperationException("A configuração Jwt:Key não foi informada.");
+
+if (string.IsNullOrWhiteSpace(jwtIssuer))
+    throw new InvalidOperationException("A configuração Jwt:Issuer não foi informada.");
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -69,26 +79,38 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey!))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization();
 
 // ===============================================
-// 4) CORS (libera apenas o front-end local)
+// 4) CORS
 // ===============================================
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("Frontend",
-        policy =>
+    options.AddPolicy("Frontend", policy =>
+    {
+        if (allowedOrigins.Length > 0)
         {
             policy
-                .AllowAnyOrigin()
+                .WithOrigins(allowedOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod();
-        });
+        }
+        else
+        {
+            policy
+                .WithOrigins("http://localhost:5173")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
 });
 
 var app = builder.Build();
@@ -112,26 +134,56 @@ app.UseAuthorization();
 app.MapControllers();
 
 // ===============================================
-// 7) SEED: cria o admin se não existir
+// 7) MIGRATIONS AUTOMÁTICAS
 // ===============================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Startup");
 
-    if (!db.Usuarios.Any(u => u.Role == UserRoles.Administrador))
+    try
     {
-        var admin = new Usuario
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Erro ao aplicar migrations automaticamente.");
+        throw;
+    }
+
+    // ===============================================
+    // 8) SEED DE ADMIN VIA CONFIGURAÇÃO SEGURA
+    // ===============================================
+    var adminUsername = builder.Configuration["SeedAdmin:Username"];
+    var adminPassword = builder.Configuration["SeedAdmin:Password"];
+
+    if (!string.IsNullOrWhiteSpace(adminUsername) &&
+        !string.IsNullOrWhiteSpace(adminPassword))
+    {
+        var adminExiste = db.Usuarios.Any(u =>
+            u.Role == UserRoles.Administrador &&
+            u.Username == adminUsername);
+
+        if (!adminExiste)
         {
-            Username = "admin",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = UserRoles.Administrador,
-            PrimeiroAcesso = false
-        };
+            var admin = new Usuario
+            {
+                Username = adminUsername,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+                Role = UserRoles.Administrador,
+                PrimeiroAcesso = false
+            };
 
-        db.Usuarios.Add(admin);
-        await db.SaveChangesAsync();
+            db.Usuarios.Add(admin);
+            db.SaveChanges();
 
-        Console.WriteLine("Usuário administrador criado automaticamente: admin / admin123");
+            logger.LogInformation("Usuário administrador inicial criado com sucesso.");
+        }
+    }
+    else
+    {
+        logger.LogWarning("Seed de admin não executado porque SeedAdmin:Username e/ou SeedAdmin:Password não foram configurados.");
     }
 }
 

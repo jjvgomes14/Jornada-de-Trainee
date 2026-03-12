@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace EduConnect.Api.Models;
 
@@ -49,6 +50,10 @@ public class Aluno
     [Required(ErrorMessage = "O número é obrigatório.")]
     public string NumeroCasa { get; set; } = string.Empty;
 
-    // Navegação: todas as notas do aluno
+    public int? UsuarioId { get; set; }
+
+    [JsonIgnore]
+    public Usuario? Usuario { get; set; }
+    
     public List<Nota> Notas { get; set; } = new();
 }
