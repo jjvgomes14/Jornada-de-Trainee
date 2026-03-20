@@ -139,7 +139,17 @@ function MatriculasPendentes() {
   function openAction(item, actionType) {
     setSelected(item);
     setAcao(actionType);
-    setForm({ ra: "", turma: "", observacao: "" });
+
+    const cursoDesejado =
+      item?.cursoDesejado ||
+      item?.CursoDesejado ||
+      "";
+
+    setForm({
+      ra: "",
+      turma: actionType === "aprovar" ? cursoDesejado : "",
+      observacao: "",
+    });
   }
 
   function closeAction() {
@@ -284,10 +294,6 @@ function MatriculasPendentes() {
               </div>
 
               <div className="text-muted">
-                <b>Curso desejado:</b> {pick(selected, ["cursoDesejado", "CursoDesejado"], "-")}
-              </div>
-
-              <div className="text-muted">
                 <b>Endereço:</b> {pick(selected, ["rua", "Rua"])}, {pick(selected, ["numeroCasa", "NumeroCasa"])} -{" "}
                 {pick(selected, ["bairro", "Bairro"])} - {pick(selected, ["cidade", "Cidade"])}/
                 {pick(selected, ["estado", "Estado"])} - CEP {pick(selected, ["cep", "CEP"])}
@@ -323,14 +329,24 @@ function MatriculasPendentes() {
                 </div>
 
                 <div className="col-12 col-md-6">
-                  <label className="form-label">Turma (obrigatório)</label>
+                  <label className="form-label">Curso</label>
                   <select
                     className="form-select"
                     value={form.turma}
-                    onChange={(e) => setForm((prev) => ({ ...prev, turma: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, turma: e.target.value }))
+                    }
                     disabled={sending}
                   >
                     <option value="">Selecione...</option>
+
+                    {/* 🔥 opção automática */}
+                    {form.turma && (
+                      <option value={form.turma}>
+                        {form.turma}
+                      </option>
+                    )}
+
                     {CURSOS.map((curso) => (
                       <option key={curso} value={curso}>
                         {curso}

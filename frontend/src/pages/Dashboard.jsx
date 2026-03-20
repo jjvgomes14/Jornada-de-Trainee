@@ -36,14 +36,14 @@ export default function Dashboard() {
         roles: ["admin", "professor", "aluno"],
       },
       {
-        id: "listagem",
-        label: "Listagem",
-        roles: ["admin", "professor", "aluno"],
-      },
-      {
         id: "cadastro",
         label: "Cadastro",
         roles: ["admin"],
+      },
+      {
+        id: "listagem",
+        label: "Listagem",
+        roles: ["admin", "professor", "aluno"],
       },
       {
         id: "graficos",

@@ -143,11 +143,15 @@ export default function ListagemSection() {
   }, [canAccess]);
 
   const alunosFiltrados = useMemo(() => {
-    if (!turmaFiltro) return alunos;
+    const lista = !turmaFiltro
+      ? alunos
+      : alunos.filter((aluno) => {
+          return String(getTurma(aluno)).toLowerCase() === String(turmaFiltro).toLowerCase();
+        });
 
-    return alunos.filter((aluno) => {
-      return String(getTurma(aluno)).toLowerCase() === String(turmaFiltro).toLowerCase();
-    });
+    return [...lista].sort((a, b) =>
+      String(getNome(a)).localeCompare(String(getNome(b)), "pt-BR", { sensitivity: "base" })
+    );
   }, [alunos, turmaFiltro]);
 
   const disciplinas = useMemo(() => {
@@ -158,15 +162,22 @@ export default function ListagemSection() {
       if (disciplina) set.add(disciplina);
     }
 
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
   }, [professores]);
 
   const professoresFiltrados = useMemo(() => {
-    if (!disciplinaFiltro) return professores;
+    const lista = !disciplinaFiltro
+      ? professores
+      : professores.filter((professor) => {
+          return (
+            String(getDisciplina(professor)).toLowerCase() ===
+            String(disciplinaFiltro).toLowerCase()
+          );
+        });
 
-    return professores.filter((professor) => {
-      return String(getDisciplina(professor)).toLowerCase() === String(disciplinaFiltro).toLowerCase();
-    });
+    return [...lista].sort((a, b) =>
+      String(getNome(a)).localeCompare(String(getNome(b)), "pt-BR", { sensitivity: "base" })
+    );
   }, [professores, disciplinaFiltro]);
 
   function openEditAluno(aluno) {
@@ -337,7 +348,9 @@ export default function ListagemSection() {
           </button>
 
           <button
-            className={`btn btn-sm ${tab === "professores" ? "btn-primary" : "btn-outline-primary"}`}
+            className={`btn btn-sm ${
+              tab === "professores" ? "btn-primary" : "btn-outline-primary"
+            }`}
             onClick={() => setTab("professores")}
           >
             Professores
@@ -651,8 +664,7 @@ export default function ListagemSection() {
 
             <div className="mb-3">
               Tem certeza que deseja excluir{" "}
-              {delType === "aluno" ? "o aluno" : "o professor"}{" "}
-              <b>{String(getNome(delItem))}</b>?
+              {delType === "aluno" ? "o aluno" : "o professor"} <b>{String(getNome(delItem))}</b>?
               <div className="text-muted mt-1">Essa ação não pode ser desfeita.</div>
             </div>
 

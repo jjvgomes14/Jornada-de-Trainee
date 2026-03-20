@@ -300,10 +300,6 @@ function GraficoAdmin() {
         <>
           <div className="row g-2 align-items-end mb-3">
             <div className="col-12 col-lg-8 text-muted">
-              Comparativo geral de desempenho por disciplina. Cada cor representa uma turma.
-            </div>
-
-            <div className="col-12 col-lg-4 text-muted text-lg-end">
               Turmas: {totalTurmas} | Disciplinas: {totalDisciplinas}
             </div>
           </div>
