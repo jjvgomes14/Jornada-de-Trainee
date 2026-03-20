@@ -92,6 +92,8 @@ function makeBarData(pairs, datasetLabel) {
       {
         label: datasetLabel,
         data: pairs.map((p) => p.value),
+        backgroundColor: "rgba(54, 162, 235, 0.65)",
+        borderColor: "rgba(54, 162, 235, 1)",
       },
     ],
   };

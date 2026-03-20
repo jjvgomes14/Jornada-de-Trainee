@@ -13,6 +13,7 @@ import GraficosSection from "../components/sections/GraficosSection";
 import CalendarioSection from "../components/sections/CalendarioSection";
 import NotasSection from "../components/sections/NotasSection";
 import NotificacoesSection from "../components/sections/NotificacoesSection";
+import PresencaSection from "../components/sections/PresencaSection";
 
 const STORAGE_ACTIVE_SECTION = "dashboardActiveSection";
 
@@ -43,7 +44,7 @@ export default function Dashboard() {
       {
         id: "listagem",
         label: "Listagem",
-        roles: ["admin", "professor", "aluno"],
+        roles: ["admin", "professor"],
       },
       {
         id: "graficos",
@@ -58,6 +59,11 @@ export default function Dashboard() {
       {
         id: "notas",
         label: "Notas",
+        roles: ["professor", "aluno"],
+      },
+      {
+        id: "presenca",
+        label: "Presença",
         roles: ["professor", "aluno"],
       },
       {
@@ -96,6 +102,10 @@ export default function Dashboard() {
 
         if (item.id === "notificacoes") {
           return <NotificacoesSection />;
+        }
+
+        if (item.id === "presenca") {
+          return <PresencaSection role={role} />;
         }
 
         return <div className="alert alert-warning">Seção não encontrada.</div>;

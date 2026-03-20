@@ -18,6 +18,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<EventoCalendario> Eventos => Set<EventoCalendario>();
     public DbSet<SolicitacaoMatricula> SolicitacoesMatricula => Set<SolicitacaoMatricula>();
     public DbSet<NotificacaoEvento> NotificacoesEventos => Set<NotificacaoEvento>();
+    public DbSet<Presenca> Presencas => Set<Presenca>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -85,6 +86,27 @@ public class ApplicationDbContext : DbContext
             .HasOne(n => n.Disciplina)
             .WithMany()
             .HasForeignKey(n => n.DisciplinaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+
+        // ------------------------------
+        // PRESENÇAS
+        // ------------------------------
+        modelBuilder.Entity<Presenca>()
+            .HasIndex(p => new { p.AlunoId, p.ProfessorId, p.DataAula, p.Aula })
+            .IsUnique()
+            .HasDatabaseName("IX_Presenca_Aluno_Professor_Data_Aula");
+
+        modelBuilder.Entity<Presenca>()
+            .HasOne(p => p.Aluno)
+            .WithMany()
+            .HasForeignKey(p => p.AlunoId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Presenca>()
+            .HasOne(p => p.Professor)
+            .WithMany()
+            .HasForeignKey(p => p.ProfessorId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // ------------------------------

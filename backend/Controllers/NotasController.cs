@@ -24,6 +24,18 @@ public class NotasController : ControllerBase
         _logger = logger;
     }
 
+    private sealed class BoletimDisciplinaResumo
+    {
+        public string Disciplina { get; set; } = string.Empty;
+        public string Professor { get; set; } = string.Empty;
+        public decimal? Atividade { get; set; }
+        public decimal? P1 { get; set; }
+        public decimal? P2 { get; set; }
+        public decimal Media { get; set; }
+        public decimal PresencaPercentual { get; set; }
+        public string Situacao { get; set; } = string.Empty;
+    }
+
     // ==========================
     // HELPERS PRIVADOS
     // ==========================
@@ -127,6 +139,27 @@ public class NotasController : ControllerBase
             "P2" => TipoAvaliacao.P2,
             _ => null
         };
+    }
+
+    private static decimal CalcularPercentualPresenca(IEnumerable<Presenca> presencasDisciplina)
+    {
+        var lista = presencasDisciplina.ToList();
+        var totalAulas = lista.Count;
+
+        if (totalAulas == 0)
+            return 0m;
+
+        var totalPresencas = lista.Count(p => p.Status == StatusPresenca.Presente);
+        var percentual = (decimal)totalPresencas * 100m / totalAulas;
+
+        return Math.Round(percentual, 2);
+    }
+
+    private static string CalcularSituacao(decimal media, decimal percentualPresenca)
+    {
+        return media >= 5m && percentualPresenca >= 75m
+            ? "Aprovado"
+            : "Reprovado";
     }
 
     // ==========================
@@ -459,55 +492,236 @@ public class NotasController : ControllerBase
             .ThenBy(n => n.Tipo)
             .ToListAsync();
 
+        var presencas = await _db.Presencas
+            .AsNoTracking()
+            .Include(p => p.Professor)
+            .Where(p => p.AlunoId == alunoId)
+            .OrderBy(p => p.Disciplina)
+            .ThenBy(p => p.DataAula)
+            .ToListAsync();
+
+        var disciplinasNotas = notas
+            .Select(n => n.Disciplina?.Nome ?? string.Empty)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        var disciplinasPresencas = presencas
+            .Select(p => p.Disciplina ?? string.Empty)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        var todasDisciplinas = disciplinasNotas
+            .Concat(disciplinasPresencas)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+
+        var resumoDisciplinas = new List<BoletimDisciplinaResumo>();
+
+        foreach (var disciplinaNome in todasDisciplinas)
+        {
+            var notasDisciplina = notas
+                .Where(n => string.Equals(n.Disciplina?.Nome, disciplinaNome, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var presencasDisciplina = presencas
+                .Where(p => string.Equals(p.Disciplina, disciplinaNome, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var atividade = notasDisciplina
+                .Where(n => n.Tipo == TipoAvaliacao.Atividade)
+                .Select(n => (decimal?)n.Valor)
+                .FirstOrDefault();
+
+            var p1 = notasDisciplina
+                .Where(n => n.Tipo == TipoAvaliacao.P1)
+                .Select(n => (decimal?)n.Valor)
+                .FirstOrDefault();
+
+            var p2 = notasDisciplina
+                .Where(n => n.Tipo == TipoAvaliacao.P2)
+                .Select(n => (decimal?)n.Valor)
+                .FirstOrDefault();
+
+            var media = notasDisciplina.Count > 0
+                ? Math.Round(notasDisciplina.Average(n => n.Valor), 2)
+                : 0m;
+
+            var professorNomeNota = notasDisciplina
+                .Select(n => n.Professor?.Nome)
+                .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+
+            var professorNomePresenca = presencasDisciplina
+                .Select(p => p.Professor?.Nome)
+                .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+
+            var professorNome = professorNomeNota
+                ?? professorNomePresenca
+                ?? "-";
+
+            var percentualPresenca = CalcularPercentualPresenca(presencasDisciplina);
+            var situacao = CalcularSituacao(media, percentualPresenca);
+
+            resumoDisciplinas.Add(new BoletimDisciplinaResumo
+            {
+                Disciplina = disciplinaNome,
+                Professor = professorNome,
+                Atividade = atividade,
+                P1 = p1,
+                P2 = p2,
+                Media = media,
+                PresencaPercentual = percentualPresenca,
+                Situacao = situacao
+            });
+        }
+
+        var mediaGeral = resumoDisciplinas.Count > 0
+            ? Math.Round(resumoDisciplinas.Average(x => x.Media), 2)
+            : 0m;
+
+        var presencaGeral = resumoDisciplinas.Count > 0
+            ? Math.Round(resumoDisciplinas.Average(x => x.PresencaPercentual), 2)
+            : 0m;
+
+        var situacaoGeral = resumoDisciplinas.Count > 0 &&
+                            resumoDisciplinas.All(x => x.Situacao == "Aprovado")
+            ? "Aprovado"
+            : "Reprovado";
+
         var pdf = Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Margin(30);
+                page.Margin(24);
 
-                page.Header().Text($"Boletim - {aluno.Nome}")
-                    .SemiBold().FontSize(20).FontColor(Colors.Blue.Medium);
+                page.Header().Column(header =>
+                {
+                    header.Spacing(6);
+
+                    header.Item().Text("Boletim Escolar")
+                        .SemiBold()
+                        .FontSize(20)
+                        .FontColor(Colors.Blue.Medium);
+
+                    header.Item().LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
 
                 page.Content().Column(column =>
                 {
-                    column.Spacing(10);
+                    column.Spacing(12);
 
-                    column.Item().Text($"Aluno: {aluno.Nome}");
-                    column.Item().Text($"Turma: {aluno.Turma}");
-                    column.Item().Text($"Email: {aluno.Email}");
+                    column.Item().Text("Dados do Aluno")
+                        .SemiBold()
+                        .FontSize(14)
+                        .FontColor(Colors.Grey.Darken2);
 
                     column.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(3);
                             columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(4);
+                        });
+
+                        void AddLinha(string titulo, string valor)
+                        {
+                            table.Cell().Element(CellHeaderInfo).Text(titulo);
+                            table.Cell().Element(CellBodyInfo).Text(valor);
+                        }
+
+                        AddLinha("Nome", aluno.Nome);
+                        AddLinha("RA", aluno.RA);
+                        AddLinha("Turma", aluno.Turma);
+                        AddLinha("Curso", aluno.Curso);
+                        AddLinha("Email", aluno.Email);
+                        AddLinha("Data de nascimento", aluno.DataNascimento.ToString("dd/MM/yyyy"));
+
+                        static IContainer CellHeaderInfo(IContainer container) =>
+                            container.Padding(6)
+                                .Background(Colors.Grey.Lighten3)
+                                .BorderBottom(1)
+                                .BorderColor(Colors.Grey.Lighten1);
+
+                        static IContainer CellBodyInfo(IContainer container) =>
+                            container.Padding(6)
+                                .BorderBottom(1)
+                                .BorderColor(Colors.Grey.Lighten3);
+                    });
+
+                    column.Item().PaddingTop(8).Text("Resumo por Disciplina")
+                        .SemiBold()
+                        .FontSize(14)
+                        .FontColor(Colors.Grey.Darken2);
+
+                    column.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(2.2f); // Disciplina
+                            columns.RelativeColumn(1.1f); // Média
+                            columns.RelativeColumn(1.2f); // Presença
+                            columns.RelativeColumn(1.3f); // Situação
                         });
 
                         table.Header(header =>
                         {
-                            header.Cell().Element(CellStyle).Text("Disciplina");
-                            header.Cell().Element(CellStyle).Text("Professor");
-                            header.Cell().Element(CellStyle).Text("Tipo");
-                            header.Cell().Element(CellStyle).Text("Nota");
+                            header.Cell().Element(CellHeader).Text("Disciplina");
+                            header.Cell().Element(CellHeader).AlignCenter().Text("Média");
+                            header.Cell().Element(CellHeader).AlignCenter().Text("Presença");
+                            header.Cell().Element(CellHeader).AlignCenter().Text("Situação");
                         });
 
-                        foreach (var nota in notas)
+                        if (resumoDisciplinas.Count == 0)
                         {
-                            table.Cell().Element(CellBody).Text(nota.Disciplina?.Nome ?? "");
-                            table.Cell().Element(CellBody).Text(nota.Professor?.Nome ?? "");
-                            table.Cell().Element(CellBody).Text(nota.Tipo.ToString());
-                            table.Cell().Element(CellBody).Text(nota.Valor.ToString("0.00"));
+                            table.Cell().ColumnSpan(8).Element(CellBody).Text("Nenhum dado encontrado para este aluno.");
+                        }
+                        else
+                        {
+                            foreach (var item in resumoDisciplinas)
+                            {
+                                table.Cell().Element(CellBody).Text(item.Disciplina);
+                                table.Cell().Element(CellBody).AlignCenter().Text(item.Media.ToString("0.00"));
+                                table.Cell().Element(CellBody).AlignCenter().Text($"{item.PresencaPercentual:0.00}%");
+
+                                table.Cell().Element(item.Situacao == "Aprovado" ? CellBodyAprovado : CellBodyReprovado)
+                                    .AlignCenter()
+                                    .Text(item.Situacao);
+                            }
                         }
 
-                        static IContainer CellStyle(IContainer container) =>
-                            container.Padding(5).Background(Colors.Grey.Lighten2).Border(1).BorderColor(Colors.Grey.Lighten1);
+                        static IContainer CellHeader(IContainer container) =>
+                            container.Padding(5)
+                                .Background(Colors.Blue.Lighten4)
+                                .Border(1)
+                                .BorderColor(Colors.Grey.Lighten2);
 
                         static IContainer CellBody(IContainer container) =>
-                            container.Padding(5).BorderBottom(1).BorderColor(Colors.Grey.Lighten3);
+                            container.Padding(5)
+                                .BorderBottom(1)
+                                .BorderColor(Colors.Grey.Lighten3);
+
+                        static IContainer CellBodyAprovado(IContainer container) =>
+                            container.Padding(5)
+                                .Background(Colors.Green.Lighten4)
+                                .BorderBottom(1)
+                                .BorderColor(Colors.Grey.Lighten3);
+
+                        static IContainer CellBodyReprovado(IContainer container) =>
+                            container.Padding(5)
+                                .Background(Colors.Red.Lighten4)
+                                .BorderBottom(1)
+                                .BorderColor(Colors.Grey.Lighten3);
                     });
+
+                   
+
+                    column.Item().PaddingTop(6).Text("Critérios de aprovação: média maior ou igual a 5,00 e presença maior ou igual a 75,00%.")
+                        .FontSize(10)
+                        .FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("EduConnect • ");
+                    text.Span(DateTime.Now.ToString("dd/MM/yyyy HH:mm"));
                 });
             });
         }).GeneratePdf();
