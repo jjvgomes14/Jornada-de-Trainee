@@ -2,6 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useToast } from "../ui/ToastContext";
 
+const CURSOS = [
+  "Engenharia Elétrica",
+  "Engenharia Mecânica",
+  "Engenharia Civil",
+  "Engenharia Química",
+  "Engenharia de Automação e Controle",
+  "Engenharia de Produção",
+  "Engenharia de Software",
+  "Engenharia de Robôs",
+];
+
 function onlyDigits(v) {
   return (v || "").replace(/\D/g, "");
 }
@@ -39,9 +50,7 @@ function maskCPF(value) {
 }
 
 function maskRG(value) {
-  // RG varia por estado, então aqui vai um mask “leve” só com dígitos e separadores comuns
   const d = onlyDigits(value).slice(0, 9);
-  // Ex: 12.345.678-9 (ajuste se quiser outro formato)
   return d
     .replace(/^(\d{0,2})/, "$1")
     .replace(/^(\d{2})(\d{0,3})/, "$1.$2")
@@ -51,18 +60,12 @@ function maskRG(value) {
 }
 
 function buildApiErrorMessage(err) {
-  // Axios: err.response.data pode ser string, { message }, ou ModelState (objeto com arrays)
   const data = err?.response?.data;
 
-  // 1) formato padrão do backend: { message: "..." }
   if (typeof data?.message === "string" && data.message.trim()) return data.message;
-
-  // 2) se o backend retornar string direta
   if (typeof data === "string" && data.trim()) return data;
 
-  // 3) ModelState do ASP.NET: { "Campo": ["erro1", "erro2"], ... }
   if (data && typeof data === "object") {
-    // alguns backends retornam { errors: { ... } }
     const errorsObj = data.errors && typeof data.errors === "object" ? data.errors : data;
 
     const msgs = [];
@@ -77,10 +80,36 @@ function buildApiErrorMessage(err) {
     if (msgs.length) return msgs.join(" | ");
   }
 
-  // 4) fallback
   const status = err?.response?.status;
   if (status) return `Falha na requisição (HTTP ${status}).`;
   return "Erro ao enviar solicitação. Verifique os dados e tente novamente.";
+}
+
+function ensurePdf(file, label) {
+  if (!file) return `${label} é obrigatório.`;
+  const fileName = String(file.name || "").toLowerCase();
+  const contentType = String(file.type || "").toLowerCase();
+
+  if (contentType !== "application/pdf" && !fileName.endsWith(".pdf")) {
+    return `${label} deve ser um arquivo PDF.`;
+  }
+
+  return "";
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+
+    reader.onerror = () => reject(new Error("Falha ao ler arquivo."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function MatriculaModal({ open, onClose }) {
@@ -92,11 +121,13 @@ export default function MatriculaModal({ open, onClose }) {
   const [form, setForm] = useState({
     nome: "",
     email: "",
-    dataNascimento: "", // YYYY-MM-DD
+    dataNascimento: "",
     rg: "",
     cpf: "",
     telefone: "",
-
+    cursoDesejado: "",
+    comprovanteEndereco: null,
+    historicoEscolar: null,
     cep: "",
     rua: "",
     numero: "",
@@ -118,7 +149,9 @@ export default function MatriculaModal({ open, onClose }) {
         rg: "",
         cpf: "",
         telefone: "",
-
+        cursoDesejado: "",
+        comprovanteEndereco: null,
+        historicoEscolar: null,
         cep: "",
         rua: "",
         numero: "",
@@ -172,6 +205,13 @@ export default function MatriculaModal({ open, onClose }) {
     if (!form.rg.trim()) return "Informe o RG.";
     if (onlyDigits(form.cpf).length !== 11) return "Informe um CPF válido.";
     if (onlyDigits(form.telefone).length < 10) return "Informe um celular válido.";
+    if (!form.cursoDesejado) return "Selecione o curso desejado.";
+
+    const comprovanteError = ensurePdf(form.comprovanteEndereco, "Comprovante de endereço");
+    if (comprovanteError) return comprovanteError;
+
+    const historicoError = ensurePdf(form.historicoEscolar, "Histórico Escolar");
+    if (historicoError) return historicoError;
 
     if (onlyDigits(form.cep).length !== 8) return "Informe um CEP válido.";
     if (!form.rua.trim()) return "Informe a rua.";
@@ -193,8 +233,11 @@ export default function MatriculaModal({ open, onClose }) {
 
     setLoading(true);
     try {
-      // Backend (MatriculaSolicitacaoDto) exige estes nomes:
-      // Nome, Email, DataNascimento, RG, CPF, Celular, CEP, Estado, Cidade, Bairro, Rua, NumeroCasa
+      const [comprovanteEnderecoBase64, historicoEscolarBase64] = await Promise.all([
+        fileToBase64(form.comprovanteEndereco),
+        fileToBase64(form.historicoEscolar),
+      ]);
+
       const payload = {
         nome: form.nome.trim(),
         email: form.email.trim(),
@@ -202,7 +245,13 @@ export default function MatriculaModal({ open, onClose }) {
         rg: form.rg.trim(),
         cpf: onlyDigits(form.cpf),
         celular: onlyDigits(form.telefone),
-
+        cursoDesejado: form.cursoDesejado,
+        comprovanteEnderecoNomeArquivo: form.comprovanteEndereco?.name || "comprovante-endereco.pdf",
+        comprovanteEnderecoContentType: form.comprovanteEndereco?.type || "application/pdf",
+        comprovanteEnderecoBase64,
+        historicoEscolarNomeArquivo: form.historicoEscolar?.name || "historico-escolar.pdf",
+        historicoEscolarContentType: form.historicoEscolar?.type || "application/pdf",
+        historicoEscolarBase64,
         cep: onlyDigits(form.cep),
         estado: form.estado.trim(),
         cidade: form.cidade.trim(),
@@ -304,6 +353,51 @@ export default function MatriculaModal({ open, onClose }) {
               placeholder="000.000.000-00"
               disabled={loading}
             />
+          </div>
+
+          <div className="col-12">
+            <label className="form-label">Curso desejado</label>
+            <select
+              className="form-select"
+              value={form.cursoDesejado}
+              onChange={(e) => setField("cursoDesejado", e.target.value)}
+              disabled={loading}
+            >
+              <option value="">Selecione um curso</option>
+              {CURSOS.map((curso) => (
+                <option key={curso} value={curso}>
+                  {curso}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-12">
+            <label className="form-label">Comprovante de endereço (PDF)</label>
+            <input
+              className="form-control"
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setField("comprovanteEndereco", e.target.files?.[0] ?? null)}
+              //disabled={loading}
+            />
+            {form.comprovanteEndereco && (
+              <small className="text-muted">Arquivo selecionado: {form.comprovanteEndereco.name}</small>
+            )}
+          </div>
+
+          <div className="col-12">
+            <label className="form-label">Histórico Escolar (PDF)</label>
+            <input
+              className="form-control"
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setField("historicoEscolar", e.target.files?.[0] ?? null)}
+              //disabled={loading}
+            />
+            {form.historicoEscolar && (
+              <small className="text-muted">Arquivo selecionado: {form.historicoEscolar.name}</small>
+            )}
           </div>
 
           <div className="col-6">

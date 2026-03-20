@@ -38,7 +38,7 @@ export default function Dashboard() {
       {
         id: "listagem",
         label: "Listagem",
-        roles: ["admin", "professor"],
+        roles: ["admin", "professor", "aluno"],
       },
       {
         id: "cadastro",
@@ -58,7 +58,7 @@ export default function Dashboard() {
       {
         id: "notas",
         label: "Notas",
-        roles: ["admin", "professor", "aluno"],
+        roles: ["professor", "aluno"],
       },
       {
         id: "notificacoes",

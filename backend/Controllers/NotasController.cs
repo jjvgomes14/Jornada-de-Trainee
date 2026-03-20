@@ -317,27 +317,32 @@ public class NotasController : ControllerBase
     // GRÁFICO – ADMIN
     // ==========================
 
-    // GET: /api/Notas/grafico-admin?turma=1A
+    // GET: /api/Notas/grafico-admin
     [HttpGet("grafico-admin")]
     [Authorize(Roles = UserRoles.Administrador)]
-    public async Task<ActionResult<IEnumerable<object>>> GraficoAdmin([FromQuery] string turma)
+    public async Task<ActionResult<IEnumerable<object>>> GraficoAdmin()
     {
-        if (string.IsNullOrWhiteSpace(turma))
-            return BadRequest(new { message = "Turma é obrigatória." });
-
-        var turmaNormalizada = turma.Trim();
-
         var resultado = await _db.Notas
             .AsNoTracking()
             .Include(n => n.Aluno)
             .Include(n => n.Disciplina)
-            .Where(n => n.Aluno != null && n.Aluno.Turma == turmaNormalizada)
-            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .Where(n => n.Aluno != null &&
+                        !string.IsNullOrWhiteSpace(n.Aluno.Turma) &&
+                        n.Disciplina != null &&
+                        !string.IsNullOrWhiteSpace(n.Disciplina.Nome))
+            .GroupBy(n => new
+            {
+                Turma = n.Aluno!.Turma,
+                Disciplina = n.Disciplina!.Nome
+            })
             .Select(g => new
             {
-                disciplina = g.Key,
+                turma = g.Key.Turma,
+                disciplina = g.Key.Disciplina,
                 media = g.Average(x => x.Valor)
             })
+            .OrderBy(x => x.disciplina)
+            .ThenBy(x => x.turma)
             .ToListAsync();
 
         return Ok(resultado);
@@ -426,7 +431,7 @@ public class NotasController : ControllerBase
     }
 
     // ==========================
-    // BOLETIM PDF
+    // PDF DO ALUNO
     // ==========================
 
     // GET: /api/Notas/boletim/{alunoId}
@@ -445,118 +450,68 @@ public class NotasController : ControllerBase
         if (aluno == null)
             return NotFound(new { message = "Aluno não encontrado." });
 
-        var medias = await _db.Notas
+        var notas = await _db.Notas
             .AsNoTracking()
             .Include(n => n.Disciplina)
+            .Include(n => n.Professor)
             .Where(n => n.AlunoId == alunoId)
-            .GroupBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
-            .Select(g => new
-            {
-                Disciplina = g.Key,
-                Media = g.Average(x => x.Valor)
-            })
+            .OrderBy(n => n.Disciplina != null ? n.Disciplina.Nome : string.Empty)
+            .ThenBy(n => n.Tipo)
             .ToListAsync();
 
-        var linhas = medias
-            .OrderBy(x => x.Disciplina)
-            .Select(x => new
-            {
-                x.Disciplina,
-                Media = Math.Round(x.Media, 2),
-                Status = x.Media >= 5.0m ? "Aprovado" : "Reprovado"
-            })
-            .ToList();
-
-        var dataEmissao = DateTime.Now;
-
-        var pdfBytes = Document.Create(container =>
+        var pdf = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Margin(30);
-                page.Size(PageSizes.A4);
-                page.DefaultTextStyle(x => x.FontSize(12));
 
-                page.Header().Column(col =>
+                page.Header().Text($"Boletim - {aluno.Nome}")
+                    .SemiBold().FontSize(20).FontColor(Colors.Blue.Medium);
+
+                page.Content().Column(column =>
                 {
-                    col.Item().Text("Boletim Escolar - EduConnect").SemiBold().FontSize(18);
-                    col.Item().Text($"Emissão: {dataEmissao:dd/MM/yyyy HH:mm}");
-                    col.Item().LineHorizontal(1);
-                });
+                    column.Spacing(10);
 
-                page.Content().Column(col =>
-                {
-                    col.Spacing(10);
+                    column.Item().Text($"Aluno: {aluno.Nome}");
+                    column.Item().Text($"Turma: {aluno.Turma}");
+                    column.Item().Text($"Email: {aluno.Email}");
 
-                    col.Item().Text($"Nome: {aluno.Nome}").FontSize(12);
-                    col.Item().Text($"RA: {aluno.RA}").FontSize(12);
-                    col.Item().Text($"Turma: {aluno.Turma}").FontSize(12);
-
-                    col.Item().LineHorizontal(1);
-
-                    col.Item().Table(table =>
+                    column.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(6);
-                            columns.RelativeColumn(2);
                             columns.RelativeColumn(3);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
                         });
 
                         table.Header(header =>
                         {
-                            header.Cell().Element(CellHeader).Text("Matéria");
-                            header.Cell().Element(CellHeader).AlignCenter().Text("Média");
-                            header.Cell().Element(CellHeader).AlignCenter().Text("Situação");
+                            header.Cell().Element(CellStyle).Text("Disciplina");
+                            header.Cell().Element(CellStyle).Text("Professor");
+                            header.Cell().Element(CellStyle).Text("Tipo");
+                            header.Cell().Element(CellStyle).Text("Nota");
                         });
 
-                        if (linhas.Count == 0)
+                        foreach (var nota in notas)
                         {
-                            table.Cell()
-                                .ColumnSpan(3)
-                                .PaddingVertical(10)
-                                .Text("Nenhuma nota lançada ainda.")
-                                .Italic();
+                            table.Cell().Element(CellBody).Text(nota.Disciplina?.Nome ?? "");
+                            table.Cell().Element(CellBody).Text(nota.Professor?.Nome ?? "");
+                            table.Cell().Element(CellBody).Text(nota.Tipo.ToString());
+                            table.Cell().Element(CellBody).Text(nota.Valor.ToString("0.00"));
                         }
-                        else
-                        {
-                            foreach (var linha in linhas)
-                            {
-                                table.Cell().Element(CellBody).Text(linha.Disciplina);
-                                table.Cell().Element(CellBody).AlignCenter().Text(linha.Media.ToString("0.00"));
-                                table.Cell().Element(CellBody).AlignCenter().Text(linha.Status);
-                            }
-                        }
+
+                        static IContainer CellStyle(IContainer container) =>
+                            container.Padding(5).Background(Colors.Grey.Lighten2).Border(1).BorderColor(Colors.Grey.Lighten1);
+
+                        static IContainer CellBody(IContainer container) =>
+                            container.Padding(5).BorderBottom(1).BorderColor(Colors.Grey.Lighten3);
                     });
-
-                    col.Item().Text("Critério: aprovado com média >= 5,0.")
-                        .FontSize(10)
-                        .FontColor(Colors.Grey.Darken2);
                 });
-
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("EduConnect • Página ");
-                    t.CurrentPageNumber();
-                    t.Span(" de ");
-                    t.TotalPages();
-                });
-
-                static IContainer CellHeader(IContainer c) =>
-                    c.DefaultTextStyle(x => x.SemiBold())
-                        .PaddingVertical(6)
-                        .PaddingHorizontal(6)
-                        .Background(Colors.Grey.Lighten3);
-
-                static IContainer CellBody(IContainer c) =>
-                    c.BorderBottom(1)
-                        .BorderColor(Colors.Grey.Lighten2)
-                        .PaddingVertical(6)
-                        .PaddingHorizontal(6);
             });
         }).GeneratePdf();
 
-        var fileName = $"Boletim_{aluno.RA}_{dataEmissao:yyyyMMddHHmm}.pdf";
-        return File(pdfBytes, "application/pdf", fileName);
+        return File(pdf, "application/pdf", $"boletim-aluno-{alunoId}.pdf");
     }
 }

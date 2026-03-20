@@ -23,7 +23,6 @@ public class SolicitacaoMatricula
     [Required(ErrorMessage = "A data de nascimento é obrigatória.")]
     public DateTime DataNascimento { get; set; }
 
-    // 👇 MESMOS CAMPOS DO FRONT
     [Required]
     public string RG { get; set; } = string.Empty;
 
@@ -51,14 +50,32 @@ public class SolicitacaoMatricula
     [Required]
     public string NumeroCasa { get; set; } = string.Empty;
 
-    // Quando a solicitação foi criada
+    [Required]
+    public string CursoDesejado { get; set; } = string.Empty;
+
+    [Required]
+    public string ComprovanteEnderecoNomeArquivo { get; set; } = string.Empty;
+
+    [Required]
+    public string ComprovanteEnderecoContentType { get; set; } = string.Empty;
+
+    [Required]
+    public string ComprovanteEnderecoBase64 { get; set; } = string.Empty;
+
+    [Required]
+    public string HistoricoEscolarNomeArquivo { get; set; } = string.Empty;
+
+    [Required]
+    public string HistoricoEscolarContentType { get; set; } = string.Empty;
+
+    [Required]
+    public string HistoricoEscolarBase64 { get; set; } = string.Empty;
+
     [Required]
     public DateTime CriadoEm { get; set; }
 
-    // Status da matrícula: Pendente, Aprovada ou Rejeitada
     [Required]
     public StatusMatricula Status { get; set; } = StatusMatricula.Pendente;
 
-    // Campo opcional para o admin deixar observações
     public string? Observacao { get; set; }
 }

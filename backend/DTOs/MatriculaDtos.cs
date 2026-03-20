@@ -40,6 +40,27 @@ public class MatriculaSolicitacaoDto
 
     [Required(ErrorMessage = "O número é obrigatório.")]
     public string NumeroCasa { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Selecione o curso desejado.")]
+    public string CursoDesejado { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Envie o PDF do comprovante de endereço.")]
+    public string ComprovanteEnderecoNomeArquivo { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "O tipo do comprovante de endereço é obrigatório.")]
+    public string ComprovanteEnderecoContentType { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "O arquivo do comprovante de endereço é obrigatório.")]
+    public string ComprovanteEnderecoBase64 { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Envie o PDF do histórico escolar.")]
+    public string HistoricoEscolarNomeArquivo { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "O tipo do histórico escolar é obrigatório.")]
+    public string HistoricoEscolarContentType { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "O arquivo do histórico escolar é obrigatório.")]
+    public string HistoricoEscolarBase64 { get; set; } = string.Empty;
 }
 
 public class MatriculaRespostaDto

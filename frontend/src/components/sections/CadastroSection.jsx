@@ -37,6 +37,25 @@ function pick(obj, keys, fallback = "") {
   return fallback;
 }
 
+function buildPdfDataUrl(base64, contentType) {
+  if (!base64) return "";
+  return `data:${contentType || "application/pdf"};base64,${base64}`;
+}
+
+function DocumentoPdfLink({ label, nomeArquivo, contentType, base64 }) {
+  const href = buildPdfDataUrl(base64, contentType);
+
+  if (!href) {
+    return <span className="text-muted">{label}: não enviado</span>;
+  }
+
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-primary">
+      {label}: {nomeArquivo || "Abrir PDF"}
+    </a>
+  );
+}
+
 export default function CadastroSection() {
   const [tab, setTab] = useState("matriculas");
 
@@ -265,10 +284,30 @@ function MatriculasPendentes() {
               </div>
 
               <div className="text-muted">
+                <b>Curso desejado:</b> {pick(selected, ["cursoDesejado", "CursoDesejado"], "-")}
+              </div>
+
+              <div className="text-muted">
                 <b>Endereço:</b> {pick(selected, ["rua", "Rua"])}, {pick(selected, ["numeroCasa", "NumeroCasa"])} -{" "}
                 {pick(selected, ["bairro", "Bairro"])} - {pick(selected, ["cidade", "Cidade"])}/
                 {pick(selected, ["estado", "Estado"])} - CEP {pick(selected, ["cep", "CEP"])}
               </div>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              <DocumentoPdfLink
+                label="Comprovante de endereço"
+                nomeArquivo={pick(selected, ["comprovanteEnderecoNomeArquivo", "ComprovanteEnderecoNomeArquivo"])}
+                contentType={pick(selected, ["comprovanteEnderecoContentType", "ComprovanteEnderecoContentType"])}
+                base64={pick(selected, ["comprovanteEnderecoBase64", "ComprovanteEnderecoBase64"])}
+              />
+
+              <DocumentoPdfLink
+                label="Histórico escolar"
+                nomeArquivo={pick(selected, ["historicoEscolarNomeArquivo", "HistoricoEscolarNomeArquivo"])}
+                contentType={pick(selected, ["historicoEscolarContentType", "HistoricoEscolarContentType"])}
+                base64={pick(selected, ["historicoEscolarBase64", "HistoricoEscolarBase64"])}
+              />
             </div>
 
             {acao === "aprovar" && (
@@ -278,23 +317,23 @@ function MatriculasPendentes() {
                   <input
                     className="form-control"
                     value={form.ra}
-                    onChange={(e) => setForm((p) => ({ ...p, ra: e.target.value }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ra: e.target.value }))}
                     disabled={sending}
                   />
                 </div>
 
                 <div className="col-12 col-md-6">
-                  <label className="form-label">Turma / Curso (obrigatório)</label>
+                  <label className="form-label">Turma (obrigatório)</label>
                   <select
                     className="form-select"
                     value={form.turma}
-                    onChange={(e) => setForm((p) => ({ ...p, turma: e.target.value }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, turma: e.target.value }))}
                     disabled={sending}
                   >
-                    <option value="">Selecione um curso</option>
-                    {CURSOS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    <option value="">Selecione...</option>
+                    {CURSOS.map((curso) => (
+                      <option key={curso} value={curso}>
+                        {curso}
                       </option>
                     ))}
                   </select>
@@ -303,17 +342,23 @@ function MatriculasPendentes() {
             )}
 
             <div className="mb-3">
-              <label className="form-label">Observação (opcional)</label>
+              <label className="form-label">
+                Observação {acao === "rejeitar" ? "(opcional, mas recomendada)" : "(opcional)"}
+              </label>
               <textarea
                 className="form-control"
                 rows={3}
                 value={form.observacao}
-                onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))}
+                onChange={(e) => setForm((prev) => ({ ...prev, observacao: e.target.value }))}
                 disabled={sending}
               />
             </div>
 
-            <div className="d-grid">
+            <div className="d-flex justify-content-end gap-2">
+              <button className="btn btn-outline-secondary" onClick={closeAction} disabled={sending}>
+                Cancelar
+              </button>
+
               <button
                 className={`btn ${acao === "aprovar" ? "btn-success" : "btn-danger"}`}
                 onClick={submit}
@@ -336,94 +381,101 @@ function MatriculasPendentes() {
 function CadastroProfessor() {
   const toast = useToast();
 
-  const [loading, setLoading] = useState(false);
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [disciplina, setDisciplina] = useState("");
-  const [dataNascimento, setDataNascimento] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    nome: "",
+    email: "",
+    dataNascimento: "",
+    disciplina: "",
+  });
 
   async function submit(e) {
     e.preventDefault();
 
-    if (!nome.trim() || !email.trim() || !disciplina.trim() || !dataNascimento) {
-      toast.error("Preencha nome, e-mail, disciplina e data de nascimento.");
-      return;
-    }
+    if (!form.nome.trim()) return toast.error("Informe o nome.");
+    if (!form.email.trim()) return toast.error("Informe o e-mail.");
+    if (!form.dataNascimento) return toast.error("Informe a data de nascimento.");
+    if (!form.disciplina) return toast.error("Selecione a disciplina.");
 
-    setLoading(true);
-
+    setSaving(true);
     try {
       await api.post("/Professores", {
-        nome: nome.trim(),
-        email: email.trim(),
-        disciplina: disciplina.trim(),
-        dataNascimento,
+        nome: form.nome.trim(),
+        email: form.email.trim(),
+        dataNascimento: `${form.dataNascimento}T00:00:00`,
+        disciplina: form.disciplina,
       });
 
-      toast.success("Professor cadastrado!");
-      setNome("");
-      setEmail("");
-      setDisciplina("");
-      setDataNascimento("");
+      toast.success("Professor cadastrado com sucesso.");
+      setForm({
+        nome: "",
+        email: "",
+        dataNascimento: "",
+        disciplina: "",
+      });
     } catch (err) {
       toast.error(buildApiMessage(err, "Falha ao cadastrar professor."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   return (
-    <div className="row g-3">
-      <div className="col-12 col-lg-12">
-        <form className="card p-3" onSubmit={submit}>
-          <h5 className="mb-2">Novo professor</h5>
-
-          <label className="form-label">Nome</label>
-          <input
-            className="form-control mb-2"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            disabled={loading}
-          />
-
-          <label className="form-label">E-mail</label>
-          <input
-            className="form-control mb-2"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-          />
-
-          <label className="form-label">Data de nascimento</label>
-          <input
-            className="form-control mb-2"
-            type="date"
-            value={dataNascimento}
-            onChange={(e) => setDataNascimento(e.target.value)}
-            disabled={loading}
-          />
-
-          <label className="form-label">Disciplina</label>
-          <select
-            className="form-select mb-3"
-            value={disciplina}
-            onChange={(e) => setDisciplina(e.target.value)}
-            disabled={loading}
-          >
-            <option value="">Selecione a disciplina</option>
-            {DISCIPLINAS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-
-          <button className="btn btn-primary" disabled={loading}>
-            {loading ? "Salvando..." : "Cadastrar"}
-          </button>
-        </form>
+    <form className="row g-2" onSubmit={submit}>
+      <div className="col-12">
+        <label className="form-label">Nome</label>
+        <input
+          className="form-control"
+          value={form.nome}
+          onChange={(e) => setForm((prev) => ({ ...prev, nome: e.target.value }))}
+          disabled={saving}
+        />
       </div>
-    </div>
+
+      <div className="col-12 col-md-6">
+        <label className="form-label">E-mail</label>
+        <input
+          className="form-control"
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+          disabled={saving}
+        />
+      </div>
+
+      <div className="col-12 col-md-6">
+        <label className="form-label">Data de nascimento</label>
+        <input
+          className="form-control"
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => setForm((prev) => ({ ...prev, dataNascimento: e.target.value }))}
+          disabled={saving}
+        />
+      </div>
+
+      <div className="col-12">
+        <label className="form-label">Disciplina</label>
+        <select
+          className="form-select"
+          value={form.disciplina}
+          onChange={(e) => setForm((prev) => ({ ...prev, disciplina: e.target.value }))}
+          disabled={saving}
+        >
+          <option value="">Selecione...</option>
+          {DISCIPLINAS.map((disc) => (
+            <option key={disc} value={disc}>
+              {disc}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="col-12 d-grid mt-2">
+        <button className="btn btn-primary" disabled={saving}>
+          {saving ? "Salvando..." : "Cadastrar Professor"}
+        </button>
+      </div>
+    </form>
   );
 }
