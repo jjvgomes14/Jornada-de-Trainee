@@ -70,7 +70,7 @@ export function AuthProvider({ children }) {
   }
 
   function markPasswordChanged() {
-    setUser((prev) => {
+    setUser((prev) => {l
       if (!prev) return prev;
 
       const next = {

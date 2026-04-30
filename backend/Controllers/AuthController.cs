@@ -27,8 +27,6 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
-    // ===================== DTO INTERNO =====================
-
     public class RegisterUserDto
     {
         public string Username { get; set; } = string.Empty;
@@ -36,8 +34,7 @@ public class AuthController : ControllerBase
         public string Role { get; set; } = UserRoles.Aluno;
     }
 
-    // ===================== HELPERS =====================
-
+    //Helpers
     private static string NormalizarUsername(string? username)
     {
         return (username ?? string.Empty).Trim();
@@ -50,8 +47,7 @@ public class AuthController : ControllerBase
                role == UserRoles.Administrador;
     }
 
-    // ===================== LOGIN =====================
-
+    //Login
     // POST: /api/Auth/login
     [HttpPost("login")]
     [AllowAnonymous]
@@ -104,8 +100,7 @@ public class AuthController : ControllerBase
         return Ok(resposta);
     }
 
-    // ===================== REGISTRAR USUÁRIO =====================
-
+    //Cadastro de Usuário
     // POST: /api/Auth/registrar
     [HttpPost("registrar")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -174,8 +169,7 @@ public class AuthController : ControllerBase
         });
     }
 
-    // ===================== ALTERAR SENHA NO PRIMEIRO ACESSO =====================
-
+    //Alterar senha 1º acesso
     // POST: /api/Auth/alterar-senha-primeiro-acesso
     [HttpPost("alterar-senha-primeiro-acesso")]
     [Authorize]
@@ -225,8 +219,7 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
-    // ===================== ALTERAR SENHA COMUM =====================
-
+    //Alterar senha
     // POST: /api/Auth/alterar-senha
     [HttpPost("alterar-senha")]
     [Authorize]
@@ -268,8 +261,7 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
-    // ===================== USUÁRIO LOGADO =====================
-
+    //Usuario logado
     // GET: /api/Auth/me
     [HttpGet("me")]
     [Authorize]

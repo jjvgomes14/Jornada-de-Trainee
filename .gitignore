@@ -1,16 +1,4 @@
-<<<<<<< HEAD
-# IGNORAR PASTAS DO BACKEND
-EduConnect.API/bin/
-EduConnect.API/obj/
-EduConnect.API/.vs/
-EduConnect.API/**/bin/
-EduConnect.API/**/obj/
-
-# VS Code / Visual Studio
-=======
-# ==============================
-# FRONTEND (Vite + React)
-# ==============================
+# Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
@@ -23,38 +11,27 @@ frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/pnpm-debug.log*
 
-# ==============================
-# BACKEND (.NET / Visual Studio)
-# ==============================
+# Backend
 backend/bin/
 backend/obj/
 backend/.vs/
 
-# Ignorar bin/obj em qualquer subpasta (caso existam outros projetos)
+
 **/bin/
 **/obj/
-
-# Visual Studio / VS Code
 .vs/
->>>>>>> b7392f3 (Versão React)
 .vscode/
 *.user
 *.suo
 *.cache
-
-# Arquivos temporários
 *.log
 *.db
 *.pdb
 
-<<<<<<< HEAD
 # Pastas de publicação
 publish/
 publicado/
 
-# Config de DEV opcional
-EduConnect.API/appsettings.Development.json
-=======
 # Publicação
 publish/
 publicado/
@@ -65,4 +42,4 @@ backend/appsettings.Development.json
 # Sistema operacional
 .DS_Store
 Thumbs.db
->>>>>>> b7392f3 (Versão React)
+

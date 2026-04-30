@@ -1,16 +1,7 @@
-/* =========================================================
-   EduConnect - Tema Light/Dark (corrigido e legível)
-   - Fonte única: :root[data-theme="light"|"dark"]
-   - Bootstrap sincronizado via body[data-bs-theme]
-   ========================================================= */
-
 *{
   font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-/* ===========================
-   THEME TOKENS (fonte única)
-   =========================== */
 :root,
 :root[data-theme="light"]{
   /* Superfícies */
@@ -34,7 +25,7 @@
   --placeholder: #94a3b8;
   --focus: rgba(31, 58, 95, .22);
 
-  /* Radius */
+  /* Raio */
   --radius: 10px;
 
   /* Compat institucional */
@@ -50,12 +41,12 @@
 }
 
 :root[data-theme="dark"]{
-  /* Superfícies (um pouco mais claras pra contraste) */
+  /* Superfícies */
   --bg: #0a1020;
   --card: #0f172a;
   --border: rgba(226, 232, 240, 0.18);
 
-  /* Texto (mais claro pra leitura) */
+  /* Texto */
   --text: #f8fafc;
   --text-2: #e2e8f0;
   --muted: #cbd5e1;
@@ -72,7 +63,7 @@
   --focus: rgba(76, 141, 255, .28);
 
   /* Compat institucional */
-  --inst-primary: var(--text);        /* título sempre legível no dark */
+  --inst-primary: var(--text);     
   --inst-primary-2: var(--text-2);
   --inst-accent: var(--accent);
   --inst-bg: var(--bg);
@@ -83,20 +74,18 @@
   --inst-radius: var(--radius);
 }
 
-/* ===========================
-   Base global
-   =========================== */
+/* Base */
 body{
   background: var(--bg);
   color: var(--text);
 }
 
-/* Força tipografia do app (corrige “texto apagado” em muitos lugares) */
+/* Força tipografia do app */
 h1,h2,h3,h4,h5,h6{
   color: var(--text);
 }
 
-/* Cards (Bootstrap .card) */
+/* Cards */
 .card{
   background: var(--card);
   border-color: var(--border);
@@ -112,9 +101,7 @@ h1,h2,h3,h4,h5,h6{
   color: var(--muted) !important;
 }
 
-/* ===========================
-   Login (cara “portal”)
-   =========================== */
+/* Login*/
 .login-caixa{
   border: 1px solid var(--inst-border);
   border-radius: var(--inst-radius);
@@ -143,9 +130,7 @@ h1,h2,h3,h4,h5,h6{
   margin-top: 14px;
 }
 
-/* ===========================
-   Inputs
-   =========================== */
+/* Inputs */
 .form-control{
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -162,9 +147,7 @@ h1,h2,h3,h4,h5,h6{
   box-shadow: 0 0 0 .2rem var(--focus);
 }
 
-/* ===========================
-   Botões
-   =========================== */
+/* Botões */
 .btn-primary{
   background: var(--primary) !important;
   border-color: var(--primary) !important;
@@ -185,7 +168,6 @@ h1,h2,h3,h4,h5,h6{
   color: #ffffff !important;
 }
 
-/* Bootstrap secondary outline ficava apagado no dark */
 :root[data-theme="dark"] .btn-outline-secondary{
   color: var(--text-2) !important;
   border-color: rgba(226, 232, 240, 0.35) !important;
@@ -195,11 +177,6 @@ h1,h2,h3,h4,h5,h6{
   border-color: rgba(226, 232, 240, 0.55) !important;
   color: var(--text) !important;
 }
-
-/* ===========================
-   Navbar / Nav pills / Tabs
-   (corrige o dashboard “apagado”)
-   =========================== */
 
 /* Links default */
 .navbar,
@@ -215,7 +192,7 @@ h1,h2,h3,h4,h5,h6{
   color: var(--text) !important;
 }
 
-/* Pills (seu menu parece usar pills/btns) */
+/* Pills */
 .nav-pills .nav-link{
   color: var(--text-2) !important;
   border: 1px solid var(--border);
@@ -231,9 +208,7 @@ h1,h2,h3,h4,h5,h6{
   border-color: var(--primary) !important;
 }
 
-/* ===========================
-   Alerts / Toasts (Bootstrap)
-   =========================== */
+/* Alertas*/
 .alert{
   border-color: var(--border);
 }
@@ -250,9 +225,7 @@ h1,h2,h3,h4,h5,h6{
   border-color: var(--border);
 }
 
-/* ===========================
-   Tabelas
-   =========================== */
+/* Tabelas*/
 .table{
   color: var(--text);
 }
@@ -265,9 +238,7 @@ h1,h2,h3,h4,h5,h6{
   background-color: color-mix(in oklab, var(--card) 92%, transparent);
 }
 
-/* ===========================
-   Modal (custom)
-   =========================== */
+/* Modal */
 .modal-backdrop-custom{
   position: fixed;
   inset: 0;
@@ -289,9 +260,7 @@ h1,h2,h3,h4,h5,h6{
   box-shadow: 0 10px 30px rgba(0,0,0,.25);
 }
 
-/* ===========================
-   Topbar
-   =========================== */
+/* Topbar */
 .topbar{
   position: sticky;
   top: 0;

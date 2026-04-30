@@ -10,22 +10,18 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===============================================
-// 1) CONFIGURAÇÃO DO BANCO DE DADOS
-// ===============================================
+// Banco de dados
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrWhiteSpace(connectionString))
-    throw new InvalidOperationException("A connection string 'DefaultConnection' não foi configurada.");
+    throw new InvalidOperationException("A connection string 'DefaultConnection' nï¿½o foi configurada.");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlServer(connectionString);
 });
 
-// ===============================================
-// 2) SERVIÇOS DA APLICAÇÃO
-// ===============================================
+// ServiÃ§os
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<EmailService>();
 
@@ -53,18 +49,16 @@ builder.Services.AddSwaggerGen(opt =>
     });
 });
 
-// ===============================================
-// 3) AUTENTICAÇÃO JWT
-// ===============================================
+//AutenticaÃ§Ã£o JWT
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new InvalidOperationException("A configuração Jwt:Key não foi informada.");
+    throw new InvalidOperationException("A configuraï¿½ï¿½o Jwt:Key nï¿½o foi informada.");
 
 if (string.IsNullOrWhiteSpace(jwtIssuer))
-    throw new InvalidOperationException("A configuração Jwt:Issuer não foi informada.");
+    throw new InvalidOperationException("A configuraï¿½ï¿½o Jwt:Issuer nï¿½o foi informada.");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -85,9 +79,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ===============================================
-// 4) CORS
-// ===============================================
+// CORS
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? Array.Empty<string>();
@@ -115,27 +107,21 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ===============================================
-// 5) SWAGGER NO DESENVOLVIMENTO
-// ===============================================
+// Swagger
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// ===============================================
-// 6) MIDDLEWARES
-// ===============================================
+// Middlewares
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// ===============================================
-// 7) MIGRATIONS AUTOMÁTICAS
-// ===============================================
+// Migrations
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -152,9 +138,7 @@ using (var scope = app.Services.CreateScope())
         throw;
     }
 
-    // ===============================================
-    // 8) SEED DE ADMIN VIA CONFIGURAÇÃO SEGURA
-    // ===============================================
+    // Seed de admin
     var adminUsername = builder.Configuration["SeedAdmin:Username"];
     var adminPassword = builder.Configuration["SeedAdmin:Password"];
 
@@ -178,12 +162,12 @@ using (var scope = app.Services.CreateScope())
             db.Usuarios.Add(admin);
             db.SaveChanges();
 
-            logger.LogInformation("Usuário administrador inicial criado com sucesso.");
+            logger.LogInformation("Usuï¿½rio administrador inicial criado com sucesso.");
         }
     }
     else
     {
-        logger.LogWarning("Seed de admin não executado porque SeedAdmin:Username e/ou SeedAdmin:Password não foram configurados.");
+        logger.LogWarning("Seed de admin nï¿½o executado porque SeedAdmin:Username e/ou SeedAdmin:Password nï¿½o foram configurados.");
     }
 }
 

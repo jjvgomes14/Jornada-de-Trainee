@@ -44,7 +44,7 @@ export default function Login() {
   return (
     <div className="container py-5" style={{ maxWidth: 520 }}>
       <div className="card p-4 login-caixa">
-        {/* topo com botão de tema */}
+        {}
         <div className="d-flex align-items-start justify-content-between gap-3">
           <div>
             <h2 className="mb-2 brand-title">EduConnect</h2>
@@ -76,7 +76,7 @@ export default function Login() {
             {loading ? "Entrando..." : "Entrar"}
           </button>
 
-          {/* TROCA AQUI: secondary -> primary (fica legível no dark) */}
+          {}
           <button
             type="button"
             className="btn btn-outline-primary w-100 mt-2"

@@ -31,8 +31,6 @@ public class Nota
 
     [Required]
     public DateTime DataLancamento { get; set; }
-
-    // Navegações
     public Aluno? Aluno { get; set; }
     public Professor? Professor { get; set; }
     public Disciplina? Disciplina { get; set; }

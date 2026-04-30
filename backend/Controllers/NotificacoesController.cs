@@ -13,8 +13,8 @@ public class NotificacoesController : ControllerBase
     private readonly ApplicationDbContext _db;
     public NotificacoesController(ApplicationDbContext db) => _db = db;
 
+    //Lista de notificações
     // GET: /api/Notificacoes/eventos
-    // Aluno vê lista de notificações de eventos
     [HttpGet("eventos")]
     [Authorize(Roles = UserRoles.Aluno)]
     public async Task<IActionResult> ListarEventos([FromQuery] int limit = 50)
@@ -32,7 +32,7 @@ public class NotificacoesController : ControllerBase
         return Ok(list);
     }
 
-    // ✅ DELETE: /api/Notificacoes/eventos/{id}
+    //DELETE: /api/Notificacoes/eventos/{id}
     [HttpDelete("eventos/{id:int}")]
     [Authorize(Roles = UserRoles.Aluno)]
     public async Task<IActionResult> ExcluirEvento(int id)
@@ -49,7 +49,7 @@ public class NotificacoesController : ControllerBase
         return NoContent();
     }
 
-    // ✅ DELETE: /api/Notificacoes/eventos  (limpar tudo)
+    //DELETE: /api/Notificacoes/eventos  (limpar tudo)
     [HttpDelete("eventos")]
     [Authorize(Roles = UserRoles.Aluno)]
     public async Task<IActionResult> LimparEventos()

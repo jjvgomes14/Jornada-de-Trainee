@@ -24,17 +24,13 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // ------------------------------
-        // USUÁRIOS
-        // ------------------------------
+        //Usuários
         modelBuilder.Entity<Usuario>()
             .HasIndex(u => u.Username)
             .IsUnique()
             .HasDatabaseName("IX_Usuario_Username");
 
-        // ------------------------------
-        // ALUNOS
-        // ------------------------------
+        //Alunos
         modelBuilder.Entity<Aluno>()
             .HasIndex(a => a.RA)
             .IsUnique()
@@ -58,18 +54,14 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(a => a.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // ------------------------------
-        // PROFESSORES
-        // ------------------------------
+        // Professores
         modelBuilder.Entity<Professor>()
             .HasOne<Usuario>()
             .WithMany()
             .HasForeignKey(p => p.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // ------------------------------
-        // NOTAS
-        // ------------------------------
+        // Notas
         modelBuilder.Entity<Nota>()
             .HasOne(n => n.Aluno)
             .WithMany(a => a.Notas)
@@ -89,9 +81,7 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
 
-        // ------------------------------
-        // PRESENÇAS
-        // ------------------------------
+        // Presença
         modelBuilder.Entity<Presenca>()
             .HasIndex(p => new { p.AlunoId, p.ProfessorId, p.DataAula, p.Aula })
             .IsUnique()
@@ -109,18 +99,14 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(p => p.ProfessorId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // ------------------------------
-        // EVENTOS DO CALENDÁRIO
-        // ------------------------------
+        // Eventos do Calendário
         modelBuilder.Entity<EventoCalendario>()
             .HasOne<Professor>()
             .WithMany()
             .HasForeignKey(e => e.ProfessorId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // ------------------------------
-        // SOLICITAÇÕES DE MATRÍCULA
-        // ------------------------------
+        // Solicitações de Matrícula
         modelBuilder.Entity<SolicitacaoMatricula>()
             .Property(s => s.Status)
             .HasConversion<string>();

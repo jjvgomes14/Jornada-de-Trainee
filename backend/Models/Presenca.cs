@@ -31,7 +31,6 @@ public class Presenca
 
     [Required]
     public StatusPresenca Status { get; set; }
-
     public Aluno? Aluno { get; set; }
     public Professor? Professor { get; set; }
 }

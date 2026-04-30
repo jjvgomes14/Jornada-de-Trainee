@@ -18,7 +18,6 @@ public class Professor
 
     [Required(ErrorMessage = "A data de nascimento é obrigatória.")]
     public DateTime DataNascimento { get; set; }
-
-    // FK opcional para a tabela Usuarios (login)
+    
     public int? UsuarioId { get; set; }
 }

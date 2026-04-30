@@ -26,8 +26,7 @@ public class ProfessoresController : ControllerBase
         _logger = logger;
     }
 
-    // ======================= HELPERS PRIVADOS =======================
-
+    //Helpers
     private int? ObterUserIdDoToken()
     {
         var userIdStr = User.FindFirstValue("userId");
@@ -95,8 +94,7 @@ public class ProfessoresController : ControllerBase
             .Substring(0, tamanho);
     }
 
-    // ======================= LISTAGEM BÁSICA =======================
-
+    //Listagem de Professores
     // GET: /api/Professores
     [HttpGet]
     [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
@@ -129,9 +127,8 @@ public class ProfessoresController : ControllerBase
         return Ok(professor);
     }
 
-    // ======================= CRIAR PROFESSOR =======================
-
-    // POST: /api/Professores
+    //Criar Professor
+    //POST: /api/Professores
     [HttpPost]
     [Authorize(Roles = UserRoles.Administrador)]
     public async Task<ActionResult<Professor>> Create([FromBody] Professor professor)
@@ -217,8 +214,7 @@ public class ProfessoresController : ControllerBase
         }
     }
 
-    // ======================= ATUALIZAR PROFESSOR =======================
-
+    // Editar Professor
     // PUT: /api/Professores/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -267,8 +263,7 @@ public class ProfessoresController : ControllerBase
         return NoContent();
     }
 
-    // ======================= EXCLUIR PROFESSOR =======================
-
+    // Excluir Professor
     // DELETE: /api/Professores/{id}
     [HttpDelete("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -319,8 +314,7 @@ public class ProfessoresController : ControllerBase
         }
     }
 
-    // ======================= PROFESSOR LOGADO =======================
-
+    // Professor Logado
     // GET: /api/Professores/me
     [HttpGet("me")]
     [Authorize(Roles = UserRoles.Professor)]

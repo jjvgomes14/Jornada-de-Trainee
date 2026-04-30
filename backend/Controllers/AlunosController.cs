@@ -27,8 +27,7 @@ public class AlunosController : ControllerBase
         _logger = logger;
     }
 
-    // ======================= HELPERS PRIVADOS =======================
-
+    //Helpers
     private int? ObterUserIdDoToken()
     {
         var userIdStr = User.FindFirstValue("userId");
@@ -114,8 +113,7 @@ public class AlunosController : ControllerBase
         return false;
     }
 
-    // ======================= LISTAGEM BÁSICA =======================
-
+    //Listagem
     // GET: /api/Alunos
     [HttpGet]
     [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
@@ -148,8 +146,7 @@ public class AlunosController : ControllerBase
         return Ok(aluno);
     }
 
-    // ======================= CRIAR ALUNO =======================
-
+    //Criar Aluno
     // POST: /api/Alunos
     [HttpPost]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -235,8 +232,7 @@ public class AlunosController : ControllerBase
         }
     }
 
-    // ======================= ATUALIZAR / EXCLUIR =======================
-
+    //Atualizar ou Excluir
     // PUT: /api/Alunos/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -314,8 +310,7 @@ public class AlunosController : ControllerBase
         }
     }
 
-    // ======================= TURMAS =======================
-
+    //Turmas
     // GET: /api/Alunos/turmas
     [HttpGet("turmas")]
     [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor}")]
@@ -332,8 +327,7 @@ public class AlunosController : ControllerBase
         return Ok(turmas);
     }
 
-    // ======================= ALUNO LOGADO =======================
-
+    //Aluno Logado
     // GET: /api/Alunos/me
     [HttpGet("me")]
     [Authorize(Roles = UserRoles.Aluno)]
@@ -353,8 +347,7 @@ public class AlunosController : ControllerBase
         return Ok(aluno);
     }
 
-    // ======================= MÉDIA DO ALUNO =======================
-
+    //Média do Aluno
     // GET: /api/Alunos/{id}/media
     [HttpGet("{id:int}/media")]
     [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Professor},{UserRoles.Aluno}")]

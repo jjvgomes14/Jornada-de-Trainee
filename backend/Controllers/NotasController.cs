@@ -36,10 +36,7 @@ public class NotasController : ControllerBase
         public string Situacao { get; set; } = string.Empty;
     }
 
-    // ==========================
-    // HELPERS PRIVADOS
-    // ==========================
-
+    //Helpers
     private int? ObterUserIdDoToken()
     {
         var userIdStr = User.FindFirstValue("userId");
@@ -162,10 +159,7 @@ public class NotasController : ControllerBase
             : "Reprovado";
     }
 
-    // ==========================
-    // NOTAS DO PROFESSOR
-    // ==========================
-
+    //Notas (Professor)
     // GET: /api/Notas/professor
     [HttpGet("professor")]
     [Authorize(Roles = UserRoles.Professor)]
@@ -197,10 +191,7 @@ public class NotasController : ControllerBase
         return Ok(resultado);
     }
 
-    // ==========================
-    // CRIAR / EDITAR NOTA
-    // ==========================
-
+    //Postar Notas
     // POST: /api/Notas
     [HttpPost]
     [Authorize(Roles = UserRoles.Professor)]
@@ -292,10 +283,7 @@ public class NotasController : ControllerBase
         }
     }
 
-    // ==========================
-    // EXCLUIR NOTA
-    // ==========================
-
+    //Exlcuir Nota
     // DELETE: /api/Notas/{id}
     [HttpDelete("{id:int}")]
     [Authorize(Roles = UserRoles.Professor)]
@@ -318,10 +306,7 @@ public class NotasController : ControllerBase
         return NoContent();
     }
 
-    // ==========================
-    // GRÁFICO – PROFESSOR
-    // ==========================
-
+    //Gráfico (Professor)
     // GET: /api/Notas/grafico-professor
     [HttpGet("grafico-professor")]
     [Authorize(Roles = UserRoles.Professor)]
@@ -346,10 +331,7 @@ public class NotasController : ControllerBase
         return Ok(resultado);
     }
 
-    // ==========================
-    // GRÁFICO – ADMIN
-    // ==========================
-
+    //Gráfico (Admin)
     // GET: /api/Notas/grafico-admin
     [HttpGet("grafico-admin")]
     [Authorize(Roles = UserRoles.Administrador)]
@@ -381,10 +363,7 @@ public class NotasController : ControllerBase
         return Ok(resultado);
     }
 
-    // ==========================
-    // GRÁFICO – ALUNO
-    // ==========================
-
+    //Gráfico (Admin)
     // GET: /api/Notas/grafico-aluno/{alunoId}
     [HttpGet("grafico-aluno/{alunoId:int}")]
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
@@ -413,10 +392,7 @@ public class NotasController : ControllerBase
         return Ok(resultado);
     }
 
-    // ==========================
-    // DETALHES DO ALUNO
-    // ==========================
-
+    //Detalhes do Aluno
     // GET: /api/Notas/aluno-detalhes/{alunoId}
     [HttpGet("aluno-detalhes/{alunoId:int}")]
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]
@@ -463,10 +439,7 @@ public class NotasController : ControllerBase
         return Ok(formatado);
     }
 
-    // ==========================
-    // PDF DO ALUNO
-    // ==========================
-
+    //PDF do Boletim
     // GET: /api/Notas/boletim/{alunoId}
     [HttpGet("boletim/{alunoId:int}")]
     [Authorize(Roles = $"{UserRoles.Aluno},{UserRoles.Professor},{UserRoles.Administrador}")]

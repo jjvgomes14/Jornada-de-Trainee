@@ -20,8 +20,7 @@ public class EventosController : ControllerBase
         _logger = logger;
     }
 
-    // ========= HELPERS PRIVADOS =========
-
+    //Helpers
     private int? ObterUserIdDoToken()
     {
         var userIdStr = User.FindFirstValue("userId");
@@ -100,8 +99,7 @@ public class EventosController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
-    // ========= LISTAR EVENTOS =========
-
+    //Eventos
     // GET: /api/Eventos
     [HttpGet]
     [Authorize]
@@ -131,8 +129,7 @@ public class EventosController : ControllerBase
         return Ok(ev);
     }
 
-    // ========= CRIAR EVENTO =========
-
+    //Criar Evento
     // POST: /api/Eventos
     [HttpPost]
     [Authorize(Roles = $"{UserRoles.Professor},{UserRoles.Administrador}")]
@@ -181,8 +178,7 @@ public class EventosController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = ev.Id }, ev);
     }
 
-    // ========= ATUALIZAR EVENTO =========
-
+    //Atualizar Evento
     // PUT: /api/Eventos/{id}
     [HttpPut("{id:int}")]
     [Authorize(Roles = $"{UserRoles.Professor},{UserRoles.Administrador}")]
@@ -245,8 +241,7 @@ public class EventosController : ControllerBase
         return NoContent();
     }
 
-    // ========= EXCLUIR EVENTO =========
-
+    //Excluir Evento
     // DELETE: /api/Eventos/{id}
     [HttpDelete("{id:int}")]
     [Authorize(Roles = $"{UserRoles.Professor},{UserRoles.Administrador}")]
